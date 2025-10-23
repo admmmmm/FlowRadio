@@ -168,7 +168,7 @@ class FlowRadioApp(QMainWindow):
         self.btn_style_lofi.clicked.connect(lambda: self.switch_theme('synthwave'))
         # Ambient 按钮切换回 iOS 风格
         self.btn_style_ambient.clicked.connect(lambda: self.switch_theme('ios'))
-        
+
     def _handle_call_in(self):
         prompt_text = self.input_prompt.text().strip()
         if prompt_text:
@@ -218,9 +218,9 @@ class FlowRadioApp(QMainWindow):
     def switch_theme(self, theme_name):
         """动态切换 UI 主题"""
         theme_map = {
-            'ios': 'ios_style.qss',
-            'dark': 'dark_style.qss',  # 之前的深色主题
-            'synthwave': 'synthwave_style.qss', # 新的 Synthwave 主题
+            'ios': 'qss/ios_style.qss',
+            'dark': 'qss/dark_style.qss',  # 之前的深色主题
+            'synthwave': 'qss/synthwave_style.qss', # 新的 Synthwave 主题
             # TODO: 后续可添加 'lofi', 'ambient' 等主题
         }
         
