@@ -1,0 +1,97 @@
+/*
+ * FlowRadio 深色主题 QSS
+ * 目标: 科技感、拟电台、扁平化
+ */
+
+/* ================== 全局样式 ================== */
+QMainWindow {
+    background-color: #1E1E1E; /* 深黑 */
+}
+
+QWidget {
+    font-size: 14px;
+    color: #F0F0F0; /* 浅色文本 */
+}
+
+/* ================== 顶部 DJ & 状态 ================== */
+QLabel#DjNameLabel {
+    font-size: 24px;
+    font-weight: bold;
+    color: #00BFFF; /* 突出DJ名称 */
+}
+
+QLabel#DjStatusLabel {
+    font-size: 12px;
+    color: #AAAAAA;
+}
+
+/* ================== 按钮 (通用扁平化) ================== */
+QPushButton {
+    background-color: #3A3A3A;
+    border: none;
+    border-radius: 8px;
+    padding: 8px 12px;
+}
+
+QPushButton:hover {
+    background-color: #4A4A4A;
+}
+
+/* 底部 CALL IN 按钮突出显示 */
+QPushButton#CallInButton {
+    background-color: #FF5722; /* 橙色，呼叫感 */
+    font-weight: bold;
+}
+
+QPushButton#CallInButton:hover {
+    background-color: #E64A19;
+}
+
+
+/* ================== 中部留言区 ================== */
+
+/* 滚动区背景 */
+QScrollArea#MessageScrollArea {
+    border: 1px solid #3A3A3A; /* 边框 */
+    border-radius: 12px;
+    background-color: #282828;
+}
+
+/* 滚动区内容（消息本身） */
+QLabel#SystemMessage {
+    background-color: rgba(60, 60, 60, 150); /* 半透明深灰底，DJ/系统消息 */
+    padding: 8px;
+    border-radius: 6px;
+    margin-right: 50px; /* 靠左显示 */
+}
+
+QLabel#UserMessage {
+    background-color: rgba(0, 191, 255, 100); /* 浅蓝半透明底，用户消息 */
+    padding: 8px;
+    border-radius: 6px;
+    margin-left: 50px; /* 靠右显示 */
+    text-align: right; /* 尝试靠右对齐文本，但QLabel默认不支持，需要更复杂的布局 */
+}
+
+/* 滚动条美化 */
+QScrollBar:vertical {
+    border: none;
+    background: #282828;
+    width: 10px;
+    margin: 0px 0px 0px 0px;
+}
+
+QScrollBar::handle:vertical {
+    background: #555555;
+    min-height: 20px;
+    border-radius: 5px;
+}
+
+/* ================== 底部输入区 ================== */
+QLineEdit#PromptInput {
+    background-color: #3A3A3A;
+    border: 1px solid #4A4A4A;
+    border-radius: 8px;
+    padding: 8px;
+    color: #F0F0F0;
+}

@@ -1,0 +1,105 @@
+/*
+ * FlowRadio Synthwave 风格 QSS
+ * 目标: 80年代复古、霓虹灯、深色背景、电光蓝和霓虹粉
+ */
+
+/* 核心颜色定义 */
+/* 霓虹粉 */
+@synth-pink: #FF66CC; 
+/* 电光蓝 */
+@synth-blue: #00FFFF; 
+/* 深夜黑 */
+@deep-black: #1A1A2E; 
+
+/* ================== 全局样式 (深色背景) ================== */
+QMainWindow {
+    background-color: @deep-black; 
+}
+
+QWidget {
+    font-size: 14px;
+    color: #E0E0E0; /* 浅色文本 */
+    font-family: "OCR A Extended", "Consolas", monospace; /* 模拟复古科技字体 */
+}
+
+/* ================== 顶部 DJ & 状态 ================== */
+QLabel#DjNameLabel {
+    font-size: 28px;
+    font-weight: bold;
+    color: @synth-pink; 
+    /* 霓虹发光效果 */
+    text-shadow: 0 0 5px @synth-pink, 0 0 10px @synth-pink; 
+}
+
+QLabel#DjStatusLabel {
+    font-size: 14px;
+    color: @synth-blue;
+    text-shadow: 0 0 3px @synth-blue; 
+}
+
+/* ================== 按钮 (未来科技感) ================== */
+QPushButton {
+    background-color: #33334F; /* 深蓝紫背景 */
+    border: 2px solid @synth-blue; /* 蓝边框 */
+    border-radius: 4px; /* 较小的圆角，更硬朗 */
+    padding: 8px 16px;
+    color: #E0E0E0;
+    
+    /* 弱发光 */
+    box-shadow: 0 0 3px @synth-blue; 
+}
+
+QPushButton:hover {
+    background-color: #4F4F7A;
+    border-color: @synth-pink; /* 切换到粉色光 */
+    box-shadow: 0 0 5px @synth-pink; 
+}
+
+/* 底部 CALL IN 按钮 (强调霓虹粉) */
+QPushButton#CallInButton {
+    background-color: #451A45; 
+    color: @synth-pink;
+    font-weight: bold;
+    border: 2px solid @synth-pink;
+    box-shadow: 0 0 8px @synth-pink;
+}
+
+
+/* ================== 中部留言区 (故障边框/网格) ================== */
+
+/* 留言区卡片容器 */
+QScrollArea#MessageScrollArea {
+    border: 1px solid @synth-blue;
+    background-color: rgba(0, 0, 30, 180); /* 深色半透明 */
+    border-radius: 0px; /* 直角，更科技 */
+    /* 模拟故障扫描线 */
+    background-image: url(path/to/scanline_pattern.png); 
+}
+
+/* 系统/DJ 消息 */
+QLabel#SystemMessage {
+    background-color: rgba(0, 150, 200, 50); /* 蓝色半透明气泡 */
+    padding: 10px;
+    border-radius: 4px;
+    color: @synth-blue;
+    margin-right: 50px;
+}
+
+/* 用户消息 */
+QLabel#UserMessage {
+    background-color: rgba(255, 102, 204, 50); /* 粉色半透明气泡 */
+    padding: 10px;
+    border-radius: 4px;
+    color: @synth-pink;
+    margin-left: 50px;
+}
+
+
+/* ================== 底部输入区 ================== */
+QLineEdit#PromptInput {
+    background-color: #33334F;
+    border: 1px solid @synth-blue;
+    border-radius: 4px;
+    padding: 10px;
+    color: #E0E0E0;
+}
