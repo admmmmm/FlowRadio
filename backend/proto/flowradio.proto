@@ -1,0 +1,134 @@
+syntax = "proto3";
+
+package flowradio;
+
+// 终极修复：告诉 protoc-gen-go 插件生成的 Go 代码属于 flowradio/backend/proto 模块
+option go_package = "flowradio/backend/proto"; 
+
+
+// =========================================================================
+// 1. 服务定义 (Service Definition)
+// =========================================================================
+service FlowRadioService {
+    // 1. 用户来电/Prompt处理 (Client -> Server)
+    rpc HandleUserPrompt (PromptRequest) returns (PromptResponse) {}
+    
+    // 2. 音乐控制指令 (Client -> Server)
+    rpc SetMusicControl (MusicControlRequest) returns (ControlResponse) {}
+    
+    // 3. 配置指令 (Client -> Server)
+    rpc SetHostConfig (HostConfigRequest) returns (ConfigResponse) {}
+
+    // 4. 状态与脚本的实时推送 (Server Streaming)
+    rpc StreamUpdates (StreamRequest) returns (stream UpdateMessage) {}
+}
+
+// =========================================================================
+// 2. 请求数据结构 (Client Request Messages)
+// =========================================================================
+
+// ConversationMessage: 单条对话记录 (用于历史)
+message ConversationMessage {
+    string role = 1; // "user", "assistant", 或 "system"
+    string content = 2; // 对话内容
+}
+
+// PromptRequest: 听众来电/Prompt
+message PromptRequest {
+    string prompt_text = 1;         
+    string context_scene = 2;       
+    // 修正: 多轮对话历史
+    repeated ConversationMessage conversation_history = 3; 
+}
+
+// MusicControlRequest: 播放/音量控制
+message MusicControlRequest {
+    enum Command {
+        COMMAND_UNSPECIFIED = 0;
+        PLAY = 1;
+        PAUSE = 2;
+        SET_VOLUME = 3;
+    }
+    Command command = 1;
+    int32 value = 2;                
+}
+
+// HostConfigRequest: 主持人配置
+message HostConfigRequest {
+    string host_id = 1;
+    string personality_type = 2;    
+    string voice_id = 3;            
+}
+
+// StreamRequest: 客户端请求开始接收更新
+message StreamRequest {
+    string client_session_id = 1;   
+}
+
+// =========================================================================
+// 3. 响应数据结构 (Server Response Messages)
+// =========================================================================
+message PromptResponse {
+    bool success = 1;
+    string message = 2;             
+}
+message ControlResponse {
+    bool success = 1;
+    string message = 2;
+}
+message ConfigResponse {
+    bool success = 1;
+    string message = 2;
+}
+
+// =========================================================================
+// 4. 实时更新数据结构 (Server Stream Messages)
+// =========================================================================
+
+// UpdateMessage: 后端向前端推送的实时更新数据 (核心)
+message UpdateMessage {
+    enum UpdateType {
+        UPDATE_UNSPECIFIED = 0;
+        DJ_DECISION = 1;            // DJ Brain 的核心决策结果
+        VIRTUAL_COMMENT = 2;        // 虚拟听众留言
+        SYSTEM_STATUS = 3;          // 系统错误/警告
+    }
+    
+    UpdateType type = 1;
+    int64 timestamp_ms = 2;         
+    
+    // 使用 oneof 确保每次只传输一种类型的负载
+    oneof payload {
+        DJBrainDecision decision_data = 3;  // 替换 HostSpeechData 和 GenreChangeData
+        string virtual_comment_text = 4;
+        SystemStatusData system_status_data = 5;
+    }
+}
+
+// DJBrainDecision: DJ Brain 的核心决策 (包含脚本、音乐、记忆)
+message DJBrainDecision {
+    // 1. 主持人脚本 (要显示和播放的)
+    string dj_script = 1;           
+    // 2. TTS 音频数据 (bytes)
+    bytes audio_data_bytes = 2;     
+    // 3. 音乐风格和权重 (给 Magenta 的指令)
+    repeated string music_prompts = 3; 
+    repeated float training_weights = 4; // 权重，避免与 proto 关键词冲突
+    // 4. LLM 决策信息
+    string action_reason = 5;       
+    // 5. 新的对话记忆 (新的摘要/状态)
+    string new_conversation_memory = 6; 
+    // 6. UI 风格推荐
+    string style_recommendation = 7;
+}
+
+// SystemStatusData: 系统状态/错误数据
+message SystemStatusData {
+    enum Severity {
+        SEVERITY_INFO = 0;
+        SEVERITY_WARNING = 1;
+        SEVERITY_ERROR = 2;
+    }
+    Severity severity = 1;
+    string message = 2;
+}

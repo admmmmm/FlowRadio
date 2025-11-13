@@ -7,22 +7,32 @@ from PyQt6.QtWidgets import (
     QScrollArea
 )
 # 导入 Qt 核心组件和枚举值
-from PyQt6.QtCore import Qt, QTimer, QSize, pyqtSignal as Signal, QObject
+from PyQt6.QtCore import Qt, QTimer, QSize, pyqtSignal as Signal, QObject, QThreadPool
 from PyQt6.QtGui import QFont, QIcon, QAction
 
+# 导入 gRPC Worker 和 proto 消息 (确保这些文件在正确的位置)
+from gRPCWorker import PromptWorker, WorkerSignals, StreamWorker
+import proto.flowradio_pb2 as pb
+from proto import flowradio_pb2_grpc as pb_grpc # 仅在需要时
 # --- 1. 主窗口类定义 ---
 class FlowRadioApp(QMainWindow):
-    # 使用 pyqtSignal 作为自定义信号
-    call_in_signal = Signal(str) 
+    
+    # 状态信号，用于接收实时流更新
+    stream_update_signal = Signal(object) 
     
     def __init__(self):
         super().__init__()
         self.setWindowTitle("FlowRadio - 拟人化智能电台")
         self.setFixedSize(600, 800) 
         
-        # self.load_stylesheet("ios_style.qss") # 加载QSS样式
-        self.switch_theme('ios')
+        # 核心：状态管理 (简化为 Go 后端管理历史，前端只存状态)
+        self.host_state = {
+            'current_genre': 'lofi',    
+            'current_memory': '',       # 存储 LLM 返回的最新 memory 摘要
+        }
 
+        # 加载 QSS 样式 (假设 QSS 文件在 qss/ 目录下)
+        self.switch_theme('ios')
 
         central_widget = QWidget()
         self.setCentralWidget(central_widget)
@@ -42,6 +52,14 @@ class FlowRadioApp(QMainWindow):
         
         # 连接信号与槽
         self._connect_signals()
+        
+        # 初始化线程池
+        self.threadpool = QThreadPool.globalInstance()
+        print(f"ThreadPool 初始化，最大线程数: {self.threadpool.maxThreadCount()}")
+        
+        # 启动 Stream Worker (实时监听 Go 后端推送)
+        self._start_stream_worker()
+
 
     # --- 2. 顶部区域：DJ & 快捷键 ---
     def _create_top_bar(self):
@@ -54,7 +72,7 @@ class FlowRadioApp(QMainWindow):
         dj_info_layout = QVBoxLayout(dj_info_widget)
         
         self.dj_name_label = QLabel(" DJ Astro")
-        self.dj_status_label = QLabel("Status:  准备就绪")
+        self.dj_status_label = QLabel("Status: 🌌 准备就绪")
         
         self.dj_name_label.setObjectName("DjNameLabel")
         self.dj_status_label.setObjectName("DjStatusLabel")
@@ -95,7 +113,6 @@ class FlowRadioApp(QMainWindow):
         self.btn_play_pause = QPushButton("⏸️")
         self.btn_play_pause.setFixedSize(40, 40)
         
-        # 修复点 1: Qt.Horizontal -> Qt.Orientation.Horizontal
         self.volume_slider = QSlider(Qt.Orientation.Horizontal) 
         self.volume_slider.setRange(0, 100)
         self.volume_slider.setValue(50)
@@ -111,7 +128,6 @@ class FlowRadioApp(QMainWindow):
         self.message_area.setObjectName("MessageScrollArea")
         self.message_area.setWidgetResizable(True)
         
-        # 修复点 2: Qt.ScrollBarAlwaysOff -> Qt.ScrollBarPolicy.ScrollBarAlwaysOff
         self.message_area.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
 
         # QScrollArea需要一个内容Widget
@@ -120,7 +136,6 @@ class FlowRadioApp(QMainWindow):
         self.message_layout = QVBoxLayout(self.message_content_widget)
         self.message_layout.setSpacing(8)
         
-        # 修复点 3: Qt.AlignTop -> Qt.AlignmentFlag.AlignTop
         self.message_layout.setAlignment(Qt.AlignmentFlag.AlignTop) 
 
         self.message_area.setWidget(self.message_content_widget)
@@ -172,16 +187,91 @@ class FlowRadioApp(QMainWindow):
     def _handle_call_in(self):
         prompt_text = self.input_prompt.text().strip()
         if prompt_text:
-            # 1. 触发自定义信号，通知后端或LLM逻辑
-            self.call_in_signal.emit(prompt_text) 
             
-            # 2. UI反馈：显示消息，清空输入框
+            # 1. UI反馈：显示消息，清空输入框
             self.add_message(f"您：{prompt_text}", is_user=True)
             self.input_prompt.clear()
             
-            # 3. 锁定UI，避免重复发送 (异步处理的准备)
+            # 2. 锁定UI，避免重复发送
             self.btn_call_in.setEnabled(False)
             self.btn_call_in.setText("连线中...")
+
+            # 3. 创建 Worker 并连接信号
+            # 假设当前上下文是 "Coding" (Vision模块未实现时的占位符)
+            context_scene = "Coding" 
+            
+            # PromptWorker 现在只需发送本次输入
+            worker = PromptWorker(prompt=prompt_text, context=context_scene) 
+            
+            # 连接 Worker 信号到 UI 的 Slot
+            worker.signals.prompt_sent.connect(self._handle_prompt_sent)
+            worker.signals.error.connect(self._handle_worker_error)
+            # Worker 结束不代表 LLM 完成，故不连接 finished 到 unlock
+
+            # 4. 启动 Worker
+            self.threadpool.start(worker)
+            
+    # --- 新增 Stream Worker 启动和处理逻辑 ---
+    def _start_stream_worker(self):
+        """启动后台线程，持续监听 Go 后端推送的实时更新"""
+        worker = StreamWorker()
+        
+        # 连接 Worker 的 update_received 信号到 UI 的处理槽
+        worker.signals.update_received.connect(self._handle_stream_update) 
+        worker.signals.error.connect(self._handle_worker_error)
+        
+        self.threadpool.start(worker)
+
+    def _handle_stream_update(self, update_message: pb.UpdateMessage):
+        """处理 Go 后端推送来的 UpdateMessage 实时数据"""
+        
+        update_type = update_message.type
+        
+        if update_type == pb.UpdateMessage.DJ_DECISION:
+            # 解析决策负载
+            decision = update_message.decision_data 
+            
+            primary_prompt = decision.music_prompts[0] if decision.music_prompts else self.host_state['current_genre']
+            
+            # 1. 更新 UI 脚本
+            self.add_message(decision.dj_script, is_user=False)
+            self.dj_status_label.setText(f"Status: 🎶 {primary_prompt} (理由: {decision.action_reason})")
+            
+            # 2. TODO: 播放音频 (使用 mpv 播放 decision.audio_data_bytes)
+            
+            # 3. 更新本地状态
+            self.host_state['current_memory'] = decision.new_conversation_memory
+            if decision.music_prompts and decision.music_prompts[0] != self.host_state['current_genre']:
+                 self.host_state['current_genre'] = decision.music_prompts[0]
+            
+            # LLM 流程完成，解锁按钮
+            self._unlock_call_in()
+
+        elif update_type == pb.UpdateMessage.VIRTUAL_COMMENT:
+            self.add_message(update_message.virtual_comment_text, is_user=False)
+        
+        elif update_type == pb.UpdateMessage.SYSTEM_STATUS:
+            self._handle_worker_error(update_message.system_status_data.message)
+
+    def _handle_prompt_sent(self, success: bool):
+        """ 处理 Prompt 请求发送后的 Go 后端确认信息 """
+        if success:
+            # 仅显示状态，等待 StreamWorker 推送最终结果
+            self.dj_status_label.setText("Status: 🎧 DJ Brain 正在处理...") 
+        else:
+            self.dj_status_label.setText("Status: ❌ Go 后端请求失败")
+            self._unlock_call_in() # 请求失败，立即解锁
+
+    def _handle_worker_error(self, error_message: str):
+        """ 处理 gRPC 通信错误或 StreamWorker 错误 """
+        self.add_message(f"系统错误: {error_message}", is_user=False)
+        self.dj_status_label.setText("Status: ❌ 通信错误")
+        self._unlock_call_in()
+
+    def _unlock_call_in(self):
+        """ 无论成功或失败，都在 Worker 结束后解锁按钮 """
+        self.btn_call_in.setEnabled(True)
+        self.btn_call_in.setText("📞 CALL IN")
         
     def _handle_play_pause(self):
         if self.btn_play_pause.text() == "⏸️":
