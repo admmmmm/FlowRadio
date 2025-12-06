@@ -92,6 +92,7 @@ message UpdateMessage {
         DJ_DECISION = 1;            // DJ Brain 的核心决策结果
         VIRTUAL_COMMENT = 2;        // 虚拟听众留言
         SYSTEM_STATUS = 3;          // 系统错误/警告
+        AUDIO_CHUNK = 4;            // [新增] 纯音频数据块 (PCM/或其他编码)
     }
     
     UpdateType type = 1;
@@ -102,6 +103,7 @@ message UpdateMessage {
         DJBrainDecision decision_data = 3;  // 替换 HostSpeechData 和 GenreChangeData
         string virtual_comment_text = 4;
         SystemStatusData system_status_data = 5;
+        bytes audio_chunk_data = 6;        // [新增] 连续推流的音频字节
     }
 }
 

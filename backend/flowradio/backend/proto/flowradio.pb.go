@@ -80,6 +80,7 @@ const (
 	UpdateMessage_DJ_DECISION        UpdateMessage_UpdateType = 1 // DJ Brain 的核心决策结果
 	UpdateMessage_VIRTUAL_COMMENT    UpdateMessage_UpdateType = 2 // 虚拟听众留言
 	UpdateMessage_SYSTEM_STATUS      UpdateMessage_UpdateType = 3 // 系统错误/警告
+	UpdateMessage_AUDIO_CHUNK        UpdateMessage_UpdateType = 4 // [新增] 纯音频数据块 (PCM/或其他编码)
 )
 
 // Enum value maps for UpdateMessage_UpdateType.
@@ -89,12 +90,14 @@ var (
 		1: "DJ_DECISION",
 		2: "VIRTUAL_COMMENT",
 		3: "SYSTEM_STATUS",
+		4: "AUDIO_CHUNK",
 	}
 	UpdateMessage_UpdateType_value = map[string]int32{
 		"UPDATE_UNSPECIFIED": 0,
 		"DJ_DECISION":        1,
 		"VIRTUAL_COMMENT":    2,
 		"SYSTEM_STATUS":      3,
+		"AUDIO_CHUNK":        4,
 	}
 )
 
@@ -619,6 +622,7 @@ type UpdateMessage struct {
 	//	*UpdateMessage_DecisionData
 	//	*UpdateMessage_VirtualCommentText
 	//	*UpdateMessage_SystemStatusData
+	//	*UpdateMessage_AudioChunkData
 	Payload       isUpdateMessage_Payload `protobuf_oneof:"payload"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
@@ -702,6 +706,15 @@ func (x *UpdateMessage) GetSystemStatusData() *SystemStatusData {
 	return nil
 }
 
+func (x *UpdateMessage) GetAudioChunkData() []byte {
+	if x != nil {
+		if x, ok := x.Payload.(*UpdateMessage_AudioChunkData); ok {
+			return x.AudioChunkData
+		}
+	}
+	return nil
+}
+
 type isUpdateMessage_Payload interface {
 	isUpdateMessage_Payload()
 }
@@ -718,11 +731,17 @@ type UpdateMessage_SystemStatusData struct {
 	SystemStatusData *SystemStatusData `protobuf:"bytes,5,opt,name=system_status_data,json=systemStatusData,proto3,oneof"`
 }
 
+type UpdateMessage_AudioChunkData struct {
+	AudioChunkData []byte `protobuf:"bytes,6,opt,name=audio_chunk_data,json=audioChunkData,proto3,oneof"` // [新增] 连续推流的音频字节
+}
+
 func (*UpdateMessage_DecisionData) isUpdateMessage_Payload() {}
 
 func (*UpdateMessage_VirtualCommentText) isUpdateMessage_Payload() {}
 
 func (*UpdateMessage_SystemStatusData) isUpdateMessage_Payload() {}
+
+func (*UpdateMessage_AudioChunkData) isUpdateMessage_Payload() {}
 
 // DJBrainDecision: DJ Brain 的核心决策 (包含脚本、音乐、记忆)
 type DJBrainDecision struct {
@@ -912,19 +931,21 @@ const file_proto_flowradio_proto_rawDesc = "" +
 	"\amessage\x18\x02 \x01(\tR\amessage\"D\n" +
 	"\x0eConfigResponse\x12\x18\n" +
 	"\asuccess\x18\x01 \x01(\bR\asuccess\x12\x18\n" +
-	"\amessage\x18\x02 \x01(\tR\amessage\"\x99\x03\n" +
+	"\amessage\x18\x02 \x01(\tR\amessage\"\xd6\x03\n" +
 	"\rUpdateMessage\x127\n" +
 	"\x04type\x18\x01 \x01(\x0e2#.flowradio.UpdateMessage.UpdateTypeR\x04type\x12!\n" +
 	"\ftimestamp_ms\x18\x02 \x01(\x03R\vtimestampMs\x12A\n" +
 	"\rdecision_data\x18\x03 \x01(\v2\x1a.flowradio.DJBrainDecisionH\x00R\fdecisionData\x122\n" +
 	"\x14virtual_comment_text\x18\x04 \x01(\tH\x00R\x12virtualCommentText\x12K\n" +
-	"\x12system_status_data\x18\x05 \x01(\v2\x1b.flowradio.SystemStatusDataH\x00R\x10systemStatusData\"]\n" +
+	"\x12system_status_data\x18\x05 \x01(\v2\x1b.flowradio.SystemStatusDataH\x00R\x10systemStatusData\x12*\n" +
+	"\x10audio_chunk_data\x18\x06 \x01(\fH\x00R\x0eaudioChunkData\"n\n" +
 	"\n" +
 	"UpdateType\x12\x16\n" +
 	"\x12UPDATE_UNSPECIFIED\x10\x00\x12\x0f\n" +
 	"\vDJ_DECISION\x10\x01\x12\x13\n" +
 	"\x0fVIRTUAL_COMMENT\x10\x02\x12\x11\n" +
-	"\rSYSTEM_STATUS\x10\x03B\t\n" +
+	"\rSYSTEM_STATUS\x10\x03\x12\x0f\n" +
+	"\vAUDIO_CHUNK\x10\x04B\t\n" +
 	"\apayload\"\xb8\x02\n" +
 	"\x0fDJBrainDecision\x12\x1b\n" +
 	"\tdj_script\x18\x01 \x01(\tR\bdjScript\x12(\n" +
@@ -1008,6 +1029,7 @@ func file_proto_flowradio_proto_init() {
 		(*UpdateMessage_DecisionData)(nil),
 		(*UpdateMessage_VirtualCommentText)(nil),
 		(*UpdateMessage_SystemStatusData)(nil),
+		(*UpdateMessage_AudioChunkData)(nil),
 	}
 	type x struct{}
 	out := protoimpl.TypeBuilder{

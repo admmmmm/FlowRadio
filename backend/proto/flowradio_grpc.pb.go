@@ -30,20 +30,16 @@ const (
 // For semantics around ctx use and closing/ending streaming RPCs, please refer to https://pkg.go.dev/google.golang.org/grpc/?tab=doc#ClientConn.NewStream.
 //
 // =========================================================================
-//  1. 服务定义 (Service Definition)
-//     由 Go 后端实现的 gRPC 服务接口
-//
+// 1. 服务定义 (Service Definition)
 // =========================================================================
 type FlowRadioServiceClient interface {
 	// 1. 用户来电/Prompt处理 (Client -> Server)
-	// 客户端发送 Prompt，后端返回确认信息
 	HandleUserPrompt(ctx context.Context, in *PromptRequest, opts ...grpc.CallOption) (*PromptResponse, error)
 	// 2. 音乐控制指令 (Client -> Server)
 	SetMusicControl(ctx context.Context, in *MusicControlRequest, opts ...grpc.CallOption) (*ControlResponse, error)
 	// 3. 配置指令 (Client -> Server)
 	SetHostConfig(ctx context.Context, in *HostConfigRequest, opts ...grpc.CallOption) (*ConfigResponse, error)
 	// 4. 状态与脚本的实时推送 (Server Streaming)
-	// 后端持续向前端推送所有实时更新
 	StreamUpdates(ctx context.Context, in *StreamRequest, opts ...grpc.CallOption) (grpc.ServerStreamingClient[UpdateMessage], error)
 }
 
@@ -109,20 +105,16 @@ type FlowRadioService_StreamUpdatesClient = grpc.ServerStreamingClient[UpdateMes
 // for forward compatibility.
 //
 // =========================================================================
-//  1. 服务定义 (Service Definition)
-//     由 Go 后端实现的 gRPC 服务接口
-//
+// 1. 服务定义 (Service Definition)
 // =========================================================================
 type FlowRadioServiceServer interface {
 	// 1. 用户来电/Prompt处理 (Client -> Server)
-	// 客户端发送 Prompt，后端返回确认信息
 	HandleUserPrompt(context.Context, *PromptRequest) (*PromptResponse, error)
 	// 2. 音乐控制指令 (Client -> Server)
 	SetMusicControl(context.Context, *MusicControlRequest) (*ControlResponse, error)
 	// 3. 配置指令 (Client -> Server)
 	SetHostConfig(context.Context, *HostConfigRequest) (*ConfigResponse, error)
 	// 4. 状态与脚本的实时推送 (Server Streaming)
-	// 后端持续向前端推送所有实时更新
 	StreamUpdates(*StreamRequest, grpc.ServerStreamingServer[UpdateMessage]) error
 	mustEmbedUnimplementedFlowRadioServiceServer()
 }

@@ -1,0 +1,304 @@
+package main
+
+import (
+	"context"
+	"fmt"
+	"io"
+	"log"
+	"net"
+	"net/http"
+	"strings"
+	"sync"
+	"time"
+
+	pb "flowradio/backend/proto"
+
+	"google.golang.org/grpc"
+)
+
+const (
+	port                   = ":50051"
+	systemPromptFilePath   = "./llm_system_prompt.txt"
+	initialHostPersonality = "幽默"
+	initialCurrentGenre    = "lofi"
+	
+	// 远程 Magenta 服务器 IP (Tailscale IP)
+	magentaServerIP        = "localhost" // Lyria 本地服务
+)
+
+// HostState 存储 DJ Brain 的当前状态和多轮对话记忆
+type HostState struct {
+	Personality         string                       // 主持人当前人格
+	CurrentGenre        string                       // 当前播放流派 (用于 LLM 决策)
+	ConversationHistory []map[string]string          // 存储 LLM User/Assistant 对话历史 (JSON 格式)
+	mu                  sync.Mutex                   // 保护并发访问
+}
+
+// GlobalState 存储全局对象
+type GlobalState struct {
+	HostState        *HostState
+	llmProxy         *DoubaoProxy
+	magentaProxy     *MagentaProxy // 新增 Magenta 代理
+	BroadcastChannel chan *pb.UpdateMessage
+}
+
+type server struct {
+	pb.UnimplementedFlowRadioServiceServer
+	*GlobalState
+	clients   map[string]chan *pb.UpdateMessage
+	clientMux sync.Mutex
+}
+
+// NewServer 初始化服务器和所有全局状态
+func NewServer() *server {
+	// 1. 初始化 Host State
+	initialState := &HostState{
+		Personality:         initialHostPersonality,
+		CurrentGenre:        initialCurrentGenre,
+		ConversationHistory: make([]map[string]string, 0),
+	}
+
+	globalState := &GlobalState{
+		HostState:        initialState,
+		llmProxy:         NewDoubaoProxy(systemPromptFilePath),
+		magentaProxy:     NewMagentaProxy(magentaServerIP), // 初始化 Magenta 代理
+		BroadcastChannel: make(chan *pb.UpdateMessage, 200), // 增大缓冲以适应音频流
+	}
+
+	s := &server{
+		GlobalState: globalState,
+		clients:     make(map[string]chan *pb.UpdateMessage),
+	}
+
+	go s.runBroadcastManager()
+	go s.runVirtualCommentGenerator()
+	
+	// 启动 Lyria 音乐生成
+	go s.startLyriaMusicGeneration()
+	
+	// 启动核心功能：音频流转发器
+	// 它负责从远程服务器拉取音频，并广播给前端
+	go s.runAudioStreamForwarder()
+
+	return s
+}
+
+// 启动 Lyria 音乐生成
+func (s *server) startLyriaMusicGeneration() {
+	time.Sleep(2 * time.Second) // 等待服务启动
+	
+	resp, err := http.Post(
+		fmt.Sprintf("http://%s:8000/start", magentaServerIP),
+		"application/json",
+		nil,
+	)
+	if err != nil {
+		log.Printf("[Lyria] 启动失败: %v", err)
+		return
+	}
+	defer resp.Body.Close()
+	
+	log.Println("[Lyria] 音乐生成已启动 ✓")
+}
+
+// -----------------------------------------------------------------------------
+// 核心逻辑：音频流转发
+// -----------------------------------------------------------------------------
+func (s *server) runAudioStreamForwarder() {
+	log.Println("--- 音频流转发器启动 ---")
+	
+	// 失败重试循环
+	for {
+		// 1. 尝试连接远程流
+		stream, err := s.magentaProxy.GetAudioStream(context.Background())
+		if err != nil {
+			log.Printf("[AudioForwarder] 连接失败 (5秒后重试): %v", err)
+			time.Sleep(5 * time.Second)
+			continue
+		}
+
+		// 2. 读取循环
+		// 建议缓冲区大小为 4096 或 8192 字节，对应音频的一小段
+		buf := make([]byte, 4096)
+		for {
+			n, err := stream.Read(buf)
+			if err != nil {
+				if err != io.EOF {
+					log.Printf("[AudioForwarder] 读取流断开: %v", err)
+				}
+				stream.Close()
+				break // 跳出读取循环，触发外层重连
+			}
+
+			if n > 0 {
+				// 复制数据 (因为 buf 会被复用)
+				chunkData := make([]byte, n)
+				copy(chunkData, buf[:n])
+
+				// 构造 AudioChunk 消息
+				audioMsg := &pb.UpdateMessage{
+					Type:        pb.UpdateMessage_AUDIO_CHUNK,
+					TimestampMs: time.Now().UnixMilli(),
+					Payload: &pb.UpdateMessage_AudioChunkData{
+						AudioChunkData: chunkData,
+					},
+				}
+
+				// 发送到广播通道
+				// 注意：如果广播通道满了，这里会阻塞，可能会导致音频卡顿
+				// 实际生产中可能需要丢包策略，但这里先阻塞等待
+				s.BroadcastChannel <- audioMsg
+			}
+		}
+		
+		log.Println("[AudioForwarder] 音频流连接断开，准备重连...")
+		time.Sleep(2 * time.Second)
+	}
+}
+
+// -----------------------------------------------------------------------------
+// 广播与定时任务
+// -----------------------------------------------------------------------------
+// runBroadcastManager 负责从 BroadcastChannel 接收消息，并推送给所有连接的客户端
+func (s *server) runBroadcastManager() {
+	for update := range s.BroadcastChannel {
+		s.clientMux.Lock()
+		for clientID, clientChan := range s.clients {
+			select {
+			case clientChan <- update:
+			default:
+				// 如果是音频数据导致阻塞，可能需要更激进地断开慢速客户端
+				// 这里简单处理：跳过发送
+				if update.Type != pb.UpdateMessage_AUDIO_CHUNK {
+					log.Printf("客户端 %s 阻塞，丢弃消息", clientID)
+				}
+			}
+		}
+		s.clientMux.Unlock()
+	}
+}
+
+func (s *server) runVirtualCommentGenerator() {
+	ticker := time.NewTicker(15 * time.Second) // 频率调低一点，避免刷屏
+	defer ticker.Stop()
+	for range ticker.C {
+		s.HostState.mu.Lock()
+		genre := s.HostState.CurrentGenre
+		s.HostState.mu.Unlock()
+		
+		s.BroadcastChannel <- &pb.UpdateMessage{
+			Type:        pb.UpdateMessage_VIRTUAL_COMMENT,
+			TimestampMs: time.Now().UnixMilli(),
+			Payload: &pb.UpdateMessage_VirtualCommentText{
+				VirtualCommentText: fmt.Sprintf("虚拟听众：现在的 %s 氛围感真好~", genre),
+			},
+		}
+	}
+}
+
+// -----------------------------------------------------------------------------
+// gRPC 接口实现
+// -----------------------------------------------------------------------------
+func (s *server) HandleUserPrompt(ctx context.Context, in *pb.PromptRequest) (*pb.PromptResponse, error) {
+	log.Printf("收到 Prompt: %s", in.GetPromptText())
+
+	s.HostState.mu.Lock()
+	personality := s.HostState.Personality
+	scene := in.GetContextScene()
+	callType := "文字留言"
+	if strings.Contains(scene, "Voice") { callType = "听众来电" }
+	history := s.HostState.ConversationHistory
+	s.HostState.mu.Unlock()
+
+	// 1. LLM 决策
+	llmResult, err := s.llmProxy.AnalyzeAndGenerate(ctx, in.GetPromptText(), scene, personality, callType, history)
+	if err != nil {
+		log.Printf("LLM Error: %v", err)
+		return &pb.PromptResponse{Success: false, Message: "LLM Error"}, nil
+	}
+
+	log.Printf("LLM 决策: 风格=%v, 脚本=%s", llmResult.MusicPrompts, llmResult.DjScript)
+
+	// 2. 更新状态
+	s.HostState.mu.Lock()
+	s.HostState.ConversationHistory = append(s.HostState.ConversationHistory, 
+		map[string]string{"role": "user", "content": in.GetPromptText()},
+		map[string]string{"role": "assistant", "content": llmResult.DjScript},
+	)
+	
+	// 3. 核心：如果 LLM 决定切换风格，调用远程 Magenta
+	primaryStyle := "current_genre"
+	if len(llmResult.MusicPrompts) > 0 {
+		primaryStyle = llmResult.MusicPrompts[0]
+	}
+
+	if primaryStyle != "current_genre" && primaryStyle != s.HostState.CurrentGenre {
+		s.HostState.CurrentGenre = primaryStyle
+		// 异步调用远程 API，不阻塞 gRPC 返回
+		go func(style string) {
+			err := s.magentaProxy.SetStyle(style)
+			if err != nil {
+				log.Printf("Magenta SetStyle Failed: %v", err)
+			}
+		}(primaryStyle)
+	}
+	s.HostState.mu.Unlock()
+
+	// 4. 推送决策结果 (脚本)
+	s.BroadcastChannel <- &pb.UpdateMessage{
+		Type: pb.UpdateMessage_DJ_DECISION,
+		Payload: &pb.UpdateMessage_DecisionData{DecisionData: &pb.DJBrainDecision{
+			DjScript: llmResult.DjScript,
+			MusicPrompts: llmResult.MusicPrompts,
+			ActionReason: llmResult.ActionReason,
+		}},
+	}
+
+	return &pb.PromptResponse{Success: true}, nil
+}
+
+func (s *server) StreamUpdates(in *pb.StreamRequest, stream pb.FlowRadioService_StreamUpdatesServer) error {
+	clientID := in.GetClientSessionId()
+	if clientID == "" { clientID = fmt.Sprintf("Anon-%d", time.Now().Unix()) }
+	
+	// 音频流数据量大，缓冲区给大一点
+	clientChan := make(chan *pb.UpdateMessage, 500)
+	
+	s.clientMux.Lock()
+	s.clients[clientID] = clientChan
+	s.clientMux.Unlock()
+	
+	log.Printf("客户端连接: %s", clientID)
+	defer func() {
+		s.clientMux.Lock()
+		delete(s.clients, clientID)
+		close(clientChan)
+		s.clientMux.Unlock()
+		log.Printf("客户端断开: %s", clientID)
+	}()
+
+	for update := range clientChan {
+		if err := stream.Send(update); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func (s *server) SetMusicControl(ctx context.Context, in *pb.MusicControlRequest) (*pb.ControlResponse, error) {
+	return &pb.ControlResponse{Success: true}, nil
+}
+func (s *server) SetHostConfig(ctx context.Context, in *pb.HostConfigRequest) (*pb.ConfigResponse, error) {
+	return &pb.ConfigResponse{Success: true}, nil
+}
+
+func main() {
+	lis, err := net.Listen("tcp", port)
+	if err != nil { log.Fatalf("failed to listen: %v", err) }
+	
+	s := grpc.NewServer()
+	pb.RegisterFlowRadioServiceServer(s, NewServer())
+	
+	log.Printf("FlowRadio Go Backend 正在监听 %s (连接远程: %s)", port, magentaServerIP)
+	if err := s.Serve(lis); err != nil { log.Fatalf("failed to serve: %v", err) }
+}

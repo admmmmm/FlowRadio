@@ -70,34 +70,34 @@ func (x MusicControlRequest_Command) Number() protoreflect.EnumNumber {
 
 // Deprecated: Use MusicControlRequest_Command.Descriptor instead.
 func (MusicControlRequest_Command) EnumDescriptor() ([]byte, []int) {
-	return file_proto_flowradio_proto_rawDescGZIP(), []int{1, 0}
+	return file_proto_flowradio_proto_rawDescGZIP(), []int{2, 0}
 }
 
 type UpdateMessage_UpdateType int32
 
 const (
 	UpdateMessage_UPDATE_UNSPECIFIED UpdateMessage_UpdateType = 0
-	UpdateMessage_HOST_SPEECH        UpdateMessage_UpdateType = 1 // 主持人脚本（文本 + TTS 指令）
+	UpdateMessage_DJ_DECISION        UpdateMessage_UpdateType = 1 // DJ Brain 的核心决策结果
 	UpdateMessage_VIRTUAL_COMMENT    UpdateMessage_UpdateType = 2 // 虚拟听众留言
-	UpdateMessage_GENRE_CHANGE       UpdateMessage_UpdateType = 3 // 流派切换状态
-	UpdateMessage_SYSTEM_STATUS      UpdateMessage_UpdateType = 4 // 系统错误/警告
+	UpdateMessage_SYSTEM_STATUS      UpdateMessage_UpdateType = 3 // 系统错误/警告
+	UpdateMessage_AUDIO_CHUNK        UpdateMessage_UpdateType = 4 // [新增] 纯音频数据块 (PCM/或其他编码)
 )
 
 // Enum value maps for UpdateMessage_UpdateType.
 var (
 	UpdateMessage_UpdateType_name = map[int32]string{
 		0: "UPDATE_UNSPECIFIED",
-		1: "HOST_SPEECH",
+		1: "DJ_DECISION",
 		2: "VIRTUAL_COMMENT",
-		3: "GENRE_CHANGE",
-		4: "SYSTEM_STATUS",
+		3: "SYSTEM_STATUS",
+		4: "AUDIO_CHUNK",
 	}
 	UpdateMessage_UpdateType_value = map[string]int32{
 		"UPDATE_UNSPECIFIED": 0,
-		"HOST_SPEECH":        1,
+		"DJ_DECISION":        1,
 		"VIRTUAL_COMMENT":    2,
-		"GENRE_CHANGE":       3,
-		"SYSTEM_STATUS":      4,
+		"SYSTEM_STATUS":      3,
+		"AUDIO_CHUNK":        4,
 	}
 )
 
@@ -125,7 +125,7 @@ func (x UpdateMessage_UpdateType) Number() protoreflect.EnumNumber {
 
 // Deprecated: Use UpdateMessage_UpdateType.Descriptor instead.
 func (UpdateMessage_UpdateType) EnumDescriptor() ([]byte, []int) {
-	return file_proto_flowradio_proto_rawDescGZIP(), []int{7, 0}
+	return file_proto_flowradio_proto_rawDescGZIP(), []int{8, 0}
 }
 
 type SystemStatusData_Severity int32
@@ -177,18 +177,73 @@ func (SystemStatusData_Severity) EnumDescriptor() ([]byte, []int) {
 	return file_proto_flowradio_proto_rawDescGZIP(), []int{10, 0}
 }
 
-// PromptRequest: 听众来电/Prompt
-type PromptRequest struct {
+// ConversationMessage: 单条对话记录 (用于历史)
+type ConversationMessage struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
-	PromptText    string                 `protobuf:"bytes,1,opt,name=prompt_text,json=promptText,proto3" json:"prompt_text,omitempty"`       // 用户输入的原文本
-	ContextScene  string                 `protobuf:"bytes,2,opt,name=context_scene,json=contextScene,proto3" json:"context_scene,omitempty"` // 视觉模块识别的当前场景 (e.g., "coding", "relaxing")
+	Role          string                 `protobuf:"bytes,1,opt,name=role,proto3" json:"role,omitempty"`       // "user", "assistant", 或 "system"
+	Content       string                 `protobuf:"bytes,2,opt,name=content,proto3" json:"content,omitempty"` // 对话内容
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
 
+func (x *ConversationMessage) Reset() {
+	*x = ConversationMessage{}
+	mi := &file_proto_flowradio_proto_msgTypes[0]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ConversationMessage) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ConversationMessage) ProtoMessage() {}
+
+func (x *ConversationMessage) ProtoReflect() protoreflect.Message {
+	mi := &file_proto_flowradio_proto_msgTypes[0]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ConversationMessage.ProtoReflect.Descriptor instead.
+func (*ConversationMessage) Descriptor() ([]byte, []int) {
+	return file_proto_flowradio_proto_rawDescGZIP(), []int{0}
+}
+
+func (x *ConversationMessage) GetRole() string {
+	if x != nil {
+		return x.Role
+	}
+	return ""
+}
+
+func (x *ConversationMessage) GetContent() string {
+	if x != nil {
+		return x.Content
+	}
+	return ""
+}
+
+// PromptRequest: 听众来电/Prompt
+type PromptRequest struct {
+	state        protoimpl.MessageState `protogen:"open.v1"`
+	PromptText   string                 `protobuf:"bytes,1,opt,name=prompt_text,json=promptText,proto3" json:"prompt_text,omitempty"`
+	ContextScene string                 `protobuf:"bytes,2,opt,name=context_scene,json=contextScene,proto3" json:"context_scene,omitempty"`
+	// 修正: 多轮对话历史
+	ConversationHistory []*ConversationMessage `protobuf:"bytes,3,rep,name=conversation_history,json=conversationHistory,proto3" json:"conversation_history,omitempty"`
+	unknownFields       protoimpl.UnknownFields
+	sizeCache           protoimpl.SizeCache
+}
+
 func (x *PromptRequest) Reset() {
 	*x = PromptRequest{}
-	mi := &file_proto_flowradio_proto_msgTypes[0]
+	mi := &file_proto_flowradio_proto_msgTypes[1]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -200,7 +255,7 @@ func (x *PromptRequest) String() string {
 func (*PromptRequest) ProtoMessage() {}
 
 func (x *PromptRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_proto_flowradio_proto_msgTypes[0]
+	mi := &file_proto_flowradio_proto_msgTypes[1]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -213,7 +268,7 @@ func (x *PromptRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use PromptRequest.ProtoReflect.Descriptor instead.
 func (*PromptRequest) Descriptor() ([]byte, []int) {
-	return file_proto_flowradio_proto_rawDescGZIP(), []int{0}
+	return file_proto_flowradio_proto_rawDescGZIP(), []int{1}
 }
 
 func (x *PromptRequest) GetPromptText() string {
@@ -230,18 +285,25 @@ func (x *PromptRequest) GetContextScene() string {
 	return ""
 }
 
+func (x *PromptRequest) GetConversationHistory() []*ConversationMessage {
+	if x != nil {
+		return x.ConversationHistory
+	}
+	return nil
+}
+
 // MusicControlRequest: 播放/音量控制
 type MusicControlRequest struct {
 	state         protoimpl.MessageState      `protogen:"open.v1"`
 	Command       MusicControlRequest_Command `protobuf:"varint,1,opt,name=command,proto3,enum=flowradio.MusicControlRequest_Command" json:"command,omitempty"`
-	Value         int32                       `protobuf:"varint,2,opt,name=value,proto3" json:"value,omitempty"` // 仅用于 SET_VOLUME (0-100)
+	Value         int32                       `protobuf:"varint,2,opt,name=value,proto3" json:"value,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
 
 func (x *MusicControlRequest) Reset() {
 	*x = MusicControlRequest{}
-	mi := &file_proto_flowradio_proto_msgTypes[1]
+	mi := &file_proto_flowradio_proto_msgTypes[2]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -253,7 +315,7 @@ func (x *MusicControlRequest) String() string {
 func (*MusicControlRequest) ProtoMessage() {}
 
 func (x *MusicControlRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_proto_flowradio_proto_msgTypes[1]
+	mi := &file_proto_flowradio_proto_msgTypes[2]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -266,7 +328,7 @@ func (x *MusicControlRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use MusicControlRequest.ProtoReflect.Descriptor instead.
 func (*MusicControlRequest) Descriptor() ([]byte, []int) {
-	return file_proto_flowradio_proto_rawDescGZIP(), []int{1}
+	return file_proto_flowradio_proto_rawDescGZIP(), []int{2}
 }
 
 func (x *MusicControlRequest) GetCommand() MusicControlRequest_Command {
@@ -287,15 +349,15 @@ func (x *MusicControlRequest) GetValue() int32 {
 type HostConfigRequest struct {
 	state           protoimpl.MessageState `protogen:"open.v1"`
 	HostId          string                 `protobuf:"bytes,1,opt,name=host_id,json=hostId,proto3" json:"host_id,omitempty"`
-	PersonalityType string                 `protobuf:"bytes,2,opt,name=personality_type,json=personalityType,proto3" json:"personality_type,omitempty"` // 性格类型 (e.g., "沉稳", "幽默")
-	VoiceId         string                 `protobuf:"bytes,3,opt,name=voice_id,json=voiceId,proto3" json:"voice_id,omitempty"`                         // 对应 TTS 服务的声线ID
+	PersonalityType string                 `protobuf:"bytes,2,opt,name=personality_type,json=personalityType,proto3" json:"personality_type,omitempty"`
+	VoiceId         string                 `protobuf:"bytes,3,opt,name=voice_id,json=voiceId,proto3" json:"voice_id,omitempty"`
 	unknownFields   protoimpl.UnknownFields
 	sizeCache       protoimpl.SizeCache
 }
 
 func (x *HostConfigRequest) Reset() {
 	*x = HostConfigRequest{}
-	mi := &file_proto_flowradio_proto_msgTypes[2]
+	mi := &file_proto_flowradio_proto_msgTypes[3]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -307,7 +369,7 @@ func (x *HostConfigRequest) String() string {
 func (*HostConfigRequest) ProtoMessage() {}
 
 func (x *HostConfigRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_proto_flowradio_proto_msgTypes[2]
+	mi := &file_proto_flowradio_proto_msgTypes[3]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -320,7 +382,7 @@ func (x *HostConfigRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use HostConfigRequest.ProtoReflect.Descriptor instead.
 func (*HostConfigRequest) Descriptor() ([]byte, []int) {
-	return file_proto_flowradio_proto_rawDescGZIP(), []int{2}
+	return file_proto_flowradio_proto_rawDescGZIP(), []int{3}
 }
 
 func (x *HostConfigRequest) GetHostId() string {
@@ -347,14 +409,14 @@ func (x *HostConfigRequest) GetVoiceId() string {
 // StreamRequest: 客户端请求开始接收更新
 type StreamRequest struct {
 	state           protoimpl.MessageState `protogen:"open.v1"`
-	ClientSessionId string                 `protobuf:"bytes,1,opt,name=client_session_id,json=clientSessionId,proto3" json:"client_session_id,omitempty"` // 客户端会话标识符 (可选，用于后端管理多个客户端连接)
+	ClientSessionId string                 `protobuf:"bytes,1,opt,name=client_session_id,json=clientSessionId,proto3" json:"client_session_id,omitempty"`
 	unknownFields   protoimpl.UnknownFields
 	sizeCache       protoimpl.SizeCache
 }
 
 func (x *StreamRequest) Reset() {
 	*x = StreamRequest{}
-	mi := &file_proto_flowradio_proto_msgTypes[3]
+	mi := &file_proto_flowradio_proto_msgTypes[4]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -366,7 +428,7 @@ func (x *StreamRequest) String() string {
 func (*StreamRequest) ProtoMessage() {}
 
 func (x *StreamRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_proto_flowradio_proto_msgTypes[3]
+	mi := &file_proto_flowradio_proto_msgTypes[4]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -379,7 +441,7 @@ func (x *StreamRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use StreamRequest.ProtoReflect.Descriptor instead.
 func (*StreamRequest) Descriptor() ([]byte, []int) {
-	return file_proto_flowradio_proto_rawDescGZIP(), []int{3}
+	return file_proto_flowradio_proto_rawDescGZIP(), []int{4}
 }
 
 func (x *StreamRequest) GetClientSessionId() string {
@@ -389,18 +451,20 @@ func (x *StreamRequest) GetClientSessionId() string {
 	return ""
 }
 
-// PromptResponse: 对 Prompt 请求的确认
+// =========================================================================
+// 3. 响应数据结构 (Server Response Messages)
+// =========================================================================
 type PromptResponse struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	Success       bool                   `protobuf:"varint,1,opt,name=success,proto3" json:"success,omitempty"`
-	Message       string                 `protobuf:"bytes,2,opt,name=message,proto3" json:"message,omitempty"` // 成功或失败信息
+	Message       string                 `protobuf:"bytes,2,opt,name=message,proto3" json:"message,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
 
 func (x *PromptResponse) Reset() {
 	*x = PromptResponse{}
-	mi := &file_proto_flowradio_proto_msgTypes[4]
+	mi := &file_proto_flowradio_proto_msgTypes[5]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -412,7 +476,7 @@ func (x *PromptResponse) String() string {
 func (*PromptResponse) ProtoMessage() {}
 
 func (x *PromptResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_proto_flowradio_proto_msgTypes[4]
+	mi := &file_proto_flowradio_proto_msgTypes[5]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -425,7 +489,7 @@ func (x *PromptResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use PromptResponse.ProtoReflect.Descriptor instead.
 func (*PromptResponse) Descriptor() ([]byte, []int) {
-	return file_proto_flowradio_proto_rawDescGZIP(), []int{4}
+	return file_proto_flowradio_proto_rawDescGZIP(), []int{5}
 }
 
 func (x *PromptResponse) GetSuccess() bool {
@@ -442,7 +506,6 @@ func (x *PromptResponse) GetMessage() string {
 	return ""
 }
 
-// ControlResponse: 对控制请求的确认
 type ControlResponse struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	Success       bool                   `protobuf:"varint,1,opt,name=success,proto3" json:"success,omitempty"`
@@ -453,7 +516,7 @@ type ControlResponse struct {
 
 func (x *ControlResponse) Reset() {
 	*x = ControlResponse{}
-	mi := &file_proto_flowradio_proto_msgTypes[5]
+	mi := &file_proto_flowradio_proto_msgTypes[6]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -465,7 +528,7 @@ func (x *ControlResponse) String() string {
 func (*ControlResponse) ProtoMessage() {}
 
 func (x *ControlResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_proto_flowradio_proto_msgTypes[5]
+	mi := &file_proto_flowradio_proto_msgTypes[6]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -478,7 +541,7 @@ func (x *ControlResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ControlResponse.ProtoReflect.Descriptor instead.
 func (*ControlResponse) Descriptor() ([]byte, []int) {
-	return file_proto_flowradio_proto_rawDescGZIP(), []int{5}
+	return file_proto_flowradio_proto_rawDescGZIP(), []int{6}
 }
 
 func (x *ControlResponse) GetSuccess() bool {
@@ -495,7 +558,6 @@ func (x *ControlResponse) GetMessage() string {
 	return ""
 }
 
-// ConfigResponse: 对配置请求的确认
 type ConfigResponse struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	Success       bool                   `protobuf:"varint,1,opt,name=success,proto3" json:"success,omitempty"`
@@ -506,7 +568,7 @@ type ConfigResponse struct {
 
 func (x *ConfigResponse) Reset() {
 	*x = ConfigResponse{}
-	mi := &file_proto_flowradio_proto_msgTypes[6]
+	mi := &file_proto_flowradio_proto_msgTypes[7]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -518,7 +580,7 @@ func (x *ConfigResponse) String() string {
 func (*ConfigResponse) ProtoMessage() {}
 
 func (x *ConfigResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_proto_flowradio_proto_msgTypes[6]
+	mi := &file_proto_flowradio_proto_msgTypes[7]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -531,7 +593,7 @@ func (x *ConfigResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ConfigResponse.ProtoReflect.Descriptor instead.
 func (*ConfigResponse) Descriptor() ([]byte, []int) {
-	return file_proto_flowradio_proto_rawDescGZIP(), []int{6}
+	return file_proto_flowradio_proto_rawDescGZIP(), []int{7}
 }
 
 func (x *ConfigResponse) GetSuccess() bool {
@@ -552,15 +614,15 @@ func (x *ConfigResponse) GetMessage() string {
 type UpdateMessage struct {
 	state       protoimpl.MessageState   `protogen:"open.v1"`
 	Type        UpdateMessage_UpdateType `protobuf:"varint,1,opt,name=type,proto3,enum=flowradio.UpdateMessage_UpdateType" json:"type,omitempty"`
-	TimestampMs int64                    `protobuf:"varint,2,opt,name=timestamp_ms,json=timestampMs,proto3" json:"timestamp_ms,omitempty"` // 消息生成的时间戳（毫秒）
+	TimestampMs int64                    `protobuf:"varint,2,opt,name=timestamp_ms,json=timestampMs,proto3" json:"timestamp_ms,omitempty"`
 	// 使用 oneof 确保每次只传输一种类型的负载
 	//
 	// Types that are valid to be assigned to Payload:
 	//
-	//	*UpdateMessage_HostSpeechData
+	//	*UpdateMessage_DecisionData
 	//	*UpdateMessage_VirtualCommentText
-	//	*UpdateMessage_GenreChangeData
 	//	*UpdateMessage_SystemStatusData
+	//	*UpdateMessage_AudioChunkData
 	Payload       isUpdateMessage_Payload `protobuf_oneof:"payload"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
@@ -568,7 +630,7 @@ type UpdateMessage struct {
 
 func (x *UpdateMessage) Reset() {
 	*x = UpdateMessage{}
-	mi := &file_proto_flowradio_proto_msgTypes[7]
+	mi := &file_proto_flowradio_proto_msgTypes[8]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -580,7 +642,7 @@ func (x *UpdateMessage) String() string {
 func (*UpdateMessage) ProtoMessage() {}
 
 func (x *UpdateMessage) ProtoReflect() protoreflect.Message {
-	mi := &file_proto_flowradio_proto_msgTypes[7]
+	mi := &file_proto_flowradio_proto_msgTypes[8]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -593,7 +655,7 @@ func (x *UpdateMessage) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use UpdateMessage.ProtoReflect.Descriptor instead.
 func (*UpdateMessage) Descriptor() ([]byte, []int) {
-	return file_proto_flowradio_proto_rawDescGZIP(), []int{7}
+	return file_proto_flowradio_proto_rawDescGZIP(), []int{8}
 }
 
 func (x *UpdateMessage) GetType() UpdateMessage_UpdateType {
@@ -617,10 +679,10 @@ func (x *UpdateMessage) GetPayload() isUpdateMessage_Payload {
 	return nil
 }
 
-func (x *UpdateMessage) GetHostSpeechData() *HostSpeechData {
+func (x *UpdateMessage) GetDecisionData() *DJBrainDecision {
 	if x != nil {
-		if x, ok := x.Payload.(*UpdateMessage_HostSpeechData); ok {
-			return x.HostSpeechData
+		if x, ok := x.Payload.(*UpdateMessage_DecisionData); ok {
+			return x.DecisionData
 		}
 	}
 	return nil
@@ -635,15 +697,6 @@ func (x *UpdateMessage) GetVirtualCommentText() string {
 	return ""
 }
 
-func (x *UpdateMessage) GetGenreChangeData() *GenreChangeData {
-	if x != nil {
-		if x, ok := x.Payload.(*UpdateMessage_GenreChangeData); ok {
-			return x.GenreChangeData
-		}
-	}
-	return nil
-}
-
 func (x *UpdateMessage) GetSystemStatusData() *SystemStatusData {
 	if x != nil {
 		if x, ok := x.Payload.(*UpdateMessage_SystemStatusData); ok {
@@ -653,59 +706,78 @@ func (x *UpdateMessage) GetSystemStatusData() *SystemStatusData {
 	return nil
 }
 
+func (x *UpdateMessage) GetAudioChunkData() []byte {
+	if x != nil {
+		if x, ok := x.Payload.(*UpdateMessage_AudioChunkData); ok {
+			return x.AudioChunkData
+		}
+	}
+	return nil
+}
+
 type isUpdateMessage_Payload interface {
 	isUpdateMessage_Payload()
 }
 
-type UpdateMessage_HostSpeechData struct {
-	HostSpeechData *HostSpeechData `protobuf:"bytes,3,opt,name=host_speech_data,json=hostSpeechData,proto3,oneof"`
+type UpdateMessage_DecisionData struct {
+	DecisionData *DJBrainDecision `protobuf:"bytes,3,opt,name=decision_data,json=decisionData,proto3,oneof"` // 替换 HostSpeechData 和 GenreChangeData
 }
 
 type UpdateMessage_VirtualCommentText struct {
 	VirtualCommentText string `protobuf:"bytes,4,opt,name=virtual_comment_text,json=virtualCommentText,proto3,oneof"`
 }
 
-type UpdateMessage_GenreChangeData struct {
-	GenreChangeData *GenreChangeData `protobuf:"bytes,5,opt,name=genre_change_data,json=genreChangeData,proto3,oneof"`
-}
-
 type UpdateMessage_SystemStatusData struct {
-	SystemStatusData *SystemStatusData `protobuf:"bytes,6,opt,name=system_status_data,json=systemStatusData,proto3,oneof"`
+	SystemStatusData *SystemStatusData `protobuf:"bytes,5,opt,name=system_status_data,json=systemStatusData,proto3,oneof"`
 }
 
-func (*UpdateMessage_HostSpeechData) isUpdateMessage_Payload() {}
+type UpdateMessage_AudioChunkData struct {
+	AudioChunkData []byte `protobuf:"bytes,6,opt,name=audio_chunk_data,json=audioChunkData,proto3,oneof"` // [新增] 连续推流的音频字节
+}
+
+func (*UpdateMessage_DecisionData) isUpdateMessage_Payload() {}
 
 func (*UpdateMessage_VirtualCommentText) isUpdateMessage_Payload() {}
 
-func (*UpdateMessage_GenreChangeData) isUpdateMessage_Payload() {}
-
 func (*UpdateMessage_SystemStatusData) isUpdateMessage_Payload() {}
 
-// HostSpeechData: 主持人脚本数据
-type HostSpeechData struct {
-	state          protoimpl.MessageState `protogen:"open.v1"`
-	ScriptText     string                 `protobuf:"bytes,1,opt,name=script_text,json=scriptText,proto3" json:"script_text,omitempty"`               // 待显示的文本脚本
-	AudioDataBytes []byte                 `protobuf:"bytes,2,opt,name=audio_data_bytes,json=audioDataBytes,proto3" json:"audio_data_bytes,omitempty"` // TTS 合成后的原始音频数据 (Bytes)
-	VoiceId        string                 `protobuf:"bytes,3,opt,name=voice_id,json=voiceId,proto3" json:"voice_id,omitempty"`
-	unknownFields  protoimpl.UnknownFields
-	sizeCache      protoimpl.SizeCache
+func (*UpdateMessage_AudioChunkData) isUpdateMessage_Payload() {}
+
+// DJBrainDecision: DJ Brain 的核心决策 (包含脚本、音乐、记忆)
+type DJBrainDecision struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// 1. 主持人脚本 (要显示和播放的)
+	DjScript string `protobuf:"bytes,1,opt,name=dj_script,json=djScript,proto3" json:"dj_script,omitempty"`
+	// 2. TTS 音频数据 (bytes)
+	AudioDataBytes []byte `protobuf:"bytes,2,opt,name=audio_data_bytes,json=audioDataBytes,proto3" json:"audio_data_bytes,omitempty"`
+	// 3. 音乐风格和权重 (给 Magenta 的指令)
+	MusicPrompts    []string  `protobuf:"bytes,3,rep,name=music_prompts,json=musicPrompts,proto3" json:"music_prompts,omitempty"`
+	TrainingWeights []float32 `protobuf:"fixed32,4,rep,packed,name=training_weights,json=trainingWeights,proto3" json:"training_weights,omitempty"` // 权重，避免与 proto 关键词冲突
+	// 4. LLM 决策信息
+	ActionReason string `protobuf:"bytes,5,opt,name=action_reason,json=actionReason,proto3" json:"action_reason,omitempty"`
+	// 5. 新的对话记忆 (新的摘要/状态)
+	NewConversationMemory string `protobuf:"bytes,6,opt,name=new_conversation_memory,json=newConversationMemory,proto3" json:"new_conversation_memory,omitempty"`
+	// 6. UI 风格推荐
+	StyleRecommendation string `protobuf:"bytes,7,opt,name=style_recommendation,json=styleRecommendation,proto3" json:"style_recommendation,omitempty"`
+	unknownFields       protoimpl.UnknownFields
+	sizeCache           protoimpl.SizeCache
 }
 
-func (x *HostSpeechData) Reset() {
-	*x = HostSpeechData{}
-	mi := &file_proto_flowradio_proto_msgTypes[8]
+func (x *DJBrainDecision) Reset() {
+	*x = DJBrainDecision{}
+	mi := &file_proto_flowradio_proto_msgTypes[9]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
 
-func (x *HostSpeechData) String() string {
+func (x *DJBrainDecision) String() string {
 	return protoimpl.X.MessageStringOf(x)
 }
 
-func (*HostSpeechData) ProtoMessage() {}
+func (*DJBrainDecision) ProtoMessage() {}
 
-func (x *HostSpeechData) ProtoReflect() protoreflect.Message {
-	mi := &file_proto_flowradio_proto_msgTypes[8]
+func (x *DJBrainDecision) ProtoReflect() protoreflect.Message {
+	mi := &file_proto_flowradio_proto_msgTypes[9]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -716,81 +788,56 @@ func (x *HostSpeechData) ProtoReflect() protoreflect.Message {
 	return mi.MessageOf(x)
 }
 
-// Deprecated: Use HostSpeechData.ProtoReflect.Descriptor instead.
-func (*HostSpeechData) Descriptor() ([]byte, []int) {
-	return file_proto_flowradio_proto_rawDescGZIP(), []int{8}
+// Deprecated: Use DJBrainDecision.ProtoReflect.Descriptor instead.
+func (*DJBrainDecision) Descriptor() ([]byte, []int) {
+	return file_proto_flowradio_proto_rawDescGZIP(), []int{9}
 }
 
-func (x *HostSpeechData) GetScriptText() string {
+func (x *DJBrainDecision) GetDjScript() string {
 	if x != nil {
-		return x.ScriptText
+		return x.DjScript
 	}
 	return ""
 }
 
-func (x *HostSpeechData) GetAudioDataBytes() []byte {
+func (x *DJBrainDecision) GetAudioDataBytes() []byte {
 	if x != nil {
 		return x.AudioDataBytes
 	}
 	return nil
 }
 
-func (x *HostSpeechData) GetVoiceId() string {
+func (x *DJBrainDecision) GetMusicPrompts() []string {
 	if x != nil {
-		return x.VoiceId
+		return x.MusicPrompts
+	}
+	return nil
+}
+
+func (x *DJBrainDecision) GetTrainingWeights() []float32 {
+	if x != nil {
+		return x.TrainingWeights
+	}
+	return nil
+}
+
+func (x *DJBrainDecision) GetActionReason() string {
+	if x != nil {
+		return x.ActionReason
 	}
 	return ""
 }
 
-// GenreChangeData: 流派切换数据
-type GenreChangeData struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	NewGenreName  string                 `protobuf:"bytes,1,opt,name=new_genre_name,json=newGenreName,proto3" json:"new_genre_name,omitempty"`
-	Reason        string                 `protobuf:"bytes,2,opt,name=reason,proto3" json:"reason,omitempty"` // 切换原因 (e.g., "User Request", "Context Change")
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
-}
-
-func (x *GenreChangeData) Reset() {
-	*x = GenreChangeData{}
-	mi := &file_proto_flowradio_proto_msgTypes[9]
-	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-	ms.StoreMessageInfo(mi)
-}
-
-func (x *GenreChangeData) String() string {
-	return protoimpl.X.MessageStringOf(x)
-}
-
-func (*GenreChangeData) ProtoMessage() {}
-
-func (x *GenreChangeData) ProtoReflect() protoreflect.Message {
-	mi := &file_proto_flowradio_proto_msgTypes[9]
+func (x *DJBrainDecision) GetNewConversationMemory() string {
 	if x != nil {
-		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-		if ms.LoadMessageInfo() == nil {
-			ms.StoreMessageInfo(mi)
-		}
-		return ms
-	}
-	return mi.MessageOf(x)
-}
-
-// Deprecated: Use GenreChangeData.ProtoReflect.Descriptor instead.
-func (*GenreChangeData) Descriptor() ([]byte, []int) {
-	return file_proto_flowradio_proto_rawDescGZIP(), []int{9}
-}
-
-func (x *GenreChangeData) GetNewGenreName() string {
-	if x != nil {
-		return x.NewGenreName
+		return x.NewConversationMemory
 	}
 	return ""
 }
 
-func (x *GenreChangeData) GetReason() string {
+func (x *DJBrainDecision) GetStyleRecommendation() string {
 	if x != nil {
-		return x.Reason
+		return x.StyleRecommendation
 	}
 	return ""
 }
@@ -852,11 +899,15 @@ var File_proto_flowradio_proto protoreflect.FileDescriptor
 
 const file_proto_flowradio_proto_rawDesc = "" +
 	"\n" +
-	"\x15proto/flowradio.proto\x12\tflowradio\"U\n" +
+	"\x15proto/flowradio.proto\x12\tflowradio\"C\n" +
+	"\x13ConversationMessage\x12\x12\n" +
+	"\x04role\x18\x01 \x01(\tR\x04role\x12\x18\n" +
+	"\acontent\x18\x02 \x01(\tR\acontent\"\xa8\x01\n" +
 	"\rPromptRequest\x12\x1f\n" +
 	"\vprompt_text\x18\x01 \x01(\tR\n" +
 	"promptText\x12#\n" +
-	"\rcontext_scene\x18\x02 \x01(\tR\fcontextScene\"\xb6\x01\n" +
+	"\rcontext_scene\x18\x02 \x01(\tR\fcontextScene\x12Q\n" +
+	"\x14conversation_history\x18\x03 \x03(\v2\x1e.flowradio.ConversationMessageR\x13conversationHistory\"\xb6\x01\n" +
 	"\x13MusicControlRequest\x12@\n" +
 	"\acommand\x18\x01 \x01(\x0e2&.flowradio.MusicControlRequest.CommandR\acommand\x12\x14\n" +
 	"\x05value\x18\x02 \x01(\x05R\x05value\"G\n" +
@@ -880,30 +931,30 @@ const file_proto_flowradio_proto_rawDesc = "" +
 	"\amessage\x18\x02 \x01(\tR\amessage\"D\n" +
 	"\x0eConfigResponse\x12\x18\n" +
 	"\asuccess\x18\x01 \x01(\bR\asuccess\x12\x18\n" +
-	"\amessage\x18\x02 \x01(\tR\amessage\"\xf9\x03\n" +
+	"\amessage\x18\x02 \x01(\tR\amessage\"\xd6\x03\n" +
 	"\rUpdateMessage\x127\n" +
 	"\x04type\x18\x01 \x01(\x0e2#.flowradio.UpdateMessage.UpdateTypeR\x04type\x12!\n" +
-	"\ftimestamp_ms\x18\x02 \x01(\x03R\vtimestampMs\x12E\n" +
-	"\x10host_speech_data\x18\x03 \x01(\v2\x19.flowradio.HostSpeechDataH\x00R\x0ehostSpeechData\x122\n" +
-	"\x14virtual_comment_text\x18\x04 \x01(\tH\x00R\x12virtualCommentText\x12H\n" +
-	"\x11genre_change_data\x18\x05 \x01(\v2\x1a.flowradio.GenreChangeDataH\x00R\x0fgenreChangeData\x12K\n" +
-	"\x12system_status_data\x18\x06 \x01(\v2\x1b.flowradio.SystemStatusDataH\x00R\x10systemStatusData\"o\n" +
+	"\ftimestamp_ms\x18\x02 \x01(\x03R\vtimestampMs\x12A\n" +
+	"\rdecision_data\x18\x03 \x01(\v2\x1a.flowradio.DJBrainDecisionH\x00R\fdecisionData\x122\n" +
+	"\x14virtual_comment_text\x18\x04 \x01(\tH\x00R\x12virtualCommentText\x12K\n" +
+	"\x12system_status_data\x18\x05 \x01(\v2\x1b.flowradio.SystemStatusDataH\x00R\x10systemStatusData\x12*\n" +
+	"\x10audio_chunk_data\x18\x06 \x01(\fH\x00R\x0eaudioChunkData\"n\n" +
 	"\n" +
 	"UpdateType\x12\x16\n" +
 	"\x12UPDATE_UNSPECIFIED\x10\x00\x12\x0f\n" +
-	"\vHOST_SPEECH\x10\x01\x12\x13\n" +
-	"\x0fVIRTUAL_COMMENT\x10\x02\x12\x10\n" +
-	"\fGENRE_CHANGE\x10\x03\x12\x11\n" +
-	"\rSYSTEM_STATUS\x10\x04B\t\n" +
-	"\apayload\"v\n" +
-	"\x0eHostSpeechData\x12\x1f\n" +
-	"\vscript_text\x18\x01 \x01(\tR\n" +
-	"scriptText\x12(\n" +
-	"\x10audio_data_bytes\x18\x02 \x01(\fR\x0eaudioDataBytes\x12\x19\n" +
-	"\bvoice_id\x18\x03 \x01(\tR\avoiceId\"O\n" +
-	"\x0fGenreChangeData\x12$\n" +
-	"\x0enew_genre_name\x18\x01 \x01(\tR\fnewGenreName\x12\x16\n" +
-	"\x06reason\x18\x02 \x01(\tR\x06reason\"\xb7\x01\n" +
+	"\vDJ_DECISION\x10\x01\x12\x13\n" +
+	"\x0fVIRTUAL_COMMENT\x10\x02\x12\x11\n" +
+	"\rSYSTEM_STATUS\x10\x03\x12\x0f\n" +
+	"\vAUDIO_CHUNK\x10\x04B\t\n" +
+	"\apayload\"\xb8\x02\n" +
+	"\x0fDJBrainDecision\x12\x1b\n" +
+	"\tdj_script\x18\x01 \x01(\tR\bdjScript\x12(\n" +
+	"\x10audio_data_bytes\x18\x02 \x01(\fR\x0eaudioDataBytes\x12#\n" +
+	"\rmusic_prompts\x18\x03 \x03(\tR\fmusicPrompts\x12)\n" +
+	"\x10training_weights\x18\x04 \x03(\x02R\x0ftrainingWeights\x12#\n" +
+	"\raction_reason\x18\x05 \x01(\tR\factionReason\x126\n" +
+	"\x17new_conversation_memory\x18\x06 \x01(\tR\x15newConversationMemory\x121\n" +
+	"\x14style_recommendation\x18\a \x01(\tR\x13styleRecommendation\"\xb7\x01\n" +
 	"\x10SystemStatusData\x12@\n" +
 	"\bseverity\x18\x01 \x01(\x0e2$.flowradio.SystemStatusData.SeverityR\bseverity\x12\x18\n" +
 	"\amessage\x18\x02 \x01(\tR\amessage\"G\n" +
@@ -935,33 +986,33 @@ var file_proto_flowradio_proto_goTypes = []any{
 	(MusicControlRequest_Command)(0), // 0: flowradio.MusicControlRequest.Command
 	(UpdateMessage_UpdateType)(0),    // 1: flowradio.UpdateMessage.UpdateType
 	(SystemStatusData_Severity)(0),   // 2: flowradio.SystemStatusData.Severity
-	(*PromptRequest)(nil),            // 3: flowradio.PromptRequest
-	(*MusicControlRequest)(nil),      // 4: flowradio.MusicControlRequest
-	(*HostConfigRequest)(nil),        // 5: flowradio.HostConfigRequest
-	(*StreamRequest)(nil),            // 6: flowradio.StreamRequest
-	(*PromptResponse)(nil),           // 7: flowradio.PromptResponse
-	(*ControlResponse)(nil),          // 8: flowradio.ControlResponse
-	(*ConfigResponse)(nil),           // 9: flowradio.ConfigResponse
-	(*UpdateMessage)(nil),            // 10: flowradio.UpdateMessage
-	(*HostSpeechData)(nil),           // 11: flowradio.HostSpeechData
-	(*GenreChangeData)(nil),          // 12: flowradio.GenreChangeData
+	(*ConversationMessage)(nil),      // 3: flowradio.ConversationMessage
+	(*PromptRequest)(nil),            // 4: flowradio.PromptRequest
+	(*MusicControlRequest)(nil),      // 5: flowradio.MusicControlRequest
+	(*HostConfigRequest)(nil),        // 6: flowradio.HostConfigRequest
+	(*StreamRequest)(nil),            // 7: flowradio.StreamRequest
+	(*PromptResponse)(nil),           // 8: flowradio.PromptResponse
+	(*ControlResponse)(nil),          // 9: flowradio.ControlResponse
+	(*ConfigResponse)(nil),           // 10: flowradio.ConfigResponse
+	(*UpdateMessage)(nil),            // 11: flowradio.UpdateMessage
+	(*DJBrainDecision)(nil),          // 12: flowradio.DJBrainDecision
 	(*SystemStatusData)(nil),         // 13: flowradio.SystemStatusData
 }
 var file_proto_flowradio_proto_depIdxs = []int32{
-	0,  // 0: flowradio.MusicControlRequest.command:type_name -> flowradio.MusicControlRequest.Command
-	1,  // 1: flowradio.UpdateMessage.type:type_name -> flowradio.UpdateMessage.UpdateType
-	11, // 2: flowradio.UpdateMessage.host_speech_data:type_name -> flowradio.HostSpeechData
-	12, // 3: flowradio.UpdateMessage.genre_change_data:type_name -> flowradio.GenreChangeData
+	3,  // 0: flowradio.PromptRequest.conversation_history:type_name -> flowradio.ConversationMessage
+	0,  // 1: flowradio.MusicControlRequest.command:type_name -> flowradio.MusicControlRequest.Command
+	1,  // 2: flowradio.UpdateMessage.type:type_name -> flowradio.UpdateMessage.UpdateType
+	12, // 3: flowradio.UpdateMessage.decision_data:type_name -> flowradio.DJBrainDecision
 	13, // 4: flowradio.UpdateMessage.system_status_data:type_name -> flowradio.SystemStatusData
 	2,  // 5: flowradio.SystemStatusData.severity:type_name -> flowradio.SystemStatusData.Severity
-	3,  // 6: flowradio.FlowRadioService.HandleUserPrompt:input_type -> flowradio.PromptRequest
-	4,  // 7: flowradio.FlowRadioService.SetMusicControl:input_type -> flowradio.MusicControlRequest
-	5,  // 8: flowradio.FlowRadioService.SetHostConfig:input_type -> flowradio.HostConfigRequest
-	6,  // 9: flowradio.FlowRadioService.StreamUpdates:input_type -> flowradio.StreamRequest
-	7,  // 10: flowradio.FlowRadioService.HandleUserPrompt:output_type -> flowradio.PromptResponse
-	8,  // 11: flowradio.FlowRadioService.SetMusicControl:output_type -> flowradio.ControlResponse
-	9,  // 12: flowradio.FlowRadioService.SetHostConfig:output_type -> flowradio.ConfigResponse
-	10, // 13: flowradio.FlowRadioService.StreamUpdates:output_type -> flowradio.UpdateMessage
+	4,  // 6: flowradio.FlowRadioService.HandleUserPrompt:input_type -> flowradio.PromptRequest
+	5,  // 7: flowradio.FlowRadioService.SetMusicControl:input_type -> flowradio.MusicControlRequest
+	6,  // 8: flowradio.FlowRadioService.SetHostConfig:input_type -> flowradio.HostConfigRequest
+	7,  // 9: flowradio.FlowRadioService.StreamUpdates:input_type -> flowradio.StreamRequest
+	8,  // 10: flowradio.FlowRadioService.HandleUserPrompt:output_type -> flowradio.PromptResponse
+	9,  // 11: flowradio.FlowRadioService.SetMusicControl:output_type -> flowradio.ControlResponse
+	10, // 12: flowradio.FlowRadioService.SetHostConfig:output_type -> flowradio.ConfigResponse
+	11, // 13: flowradio.FlowRadioService.StreamUpdates:output_type -> flowradio.UpdateMessage
 	10, // [10:14] is the sub-list for method output_type
 	6,  // [6:10] is the sub-list for method input_type
 	6,  // [6:6] is the sub-list for extension type_name
@@ -974,11 +1025,11 @@ func file_proto_flowradio_proto_init() {
 	if File_proto_flowradio_proto != nil {
 		return
 	}
-	file_proto_flowradio_proto_msgTypes[7].OneofWrappers = []any{
-		(*UpdateMessage_HostSpeechData)(nil),
+	file_proto_flowradio_proto_msgTypes[8].OneofWrappers = []any{
+		(*UpdateMessage_DecisionData)(nil),
 		(*UpdateMessage_VirtualCommentText)(nil),
-		(*UpdateMessage_GenreChangeData)(nil),
 		(*UpdateMessage_SystemStatusData)(nil),
+		(*UpdateMessage_AudioChunkData)(nil),
 	}
 	type x struct{}
 	out := protoimpl.TypeBuilder{

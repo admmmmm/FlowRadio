@@ -38,18 +38,24 @@ type DoubaoProxy struct {
 
 // NewDoubaoProxy 创建并初始化 LLM 客户端
 // 接收 systemPromptFilePath 用于读取模板文件
+// 如果 VOLCANO_API_KEY 未设置,返回 nil (允许使用 Coze 模式)
 func NewDoubaoProxy(systemPromptFilePath string) *DoubaoProxy {
 	apiKey := os.Getenv("VOLCANO_API_KEY") 
 	if apiKey == "" {
-		log.Fatal("Fatal: VOLCANO_API_KEY 环境变量未设置。")
+		log.Println("⚠️  VOLCANO_API_KEY 环境变量未设置 - LLM回退模式将不可用")
+		log.Println("💡 提示: 如果配置了 COZE_API_TOKEN,将使用 Coze 工作流")
+		log.Println("📝 获取豆包 API Key: https://console.volcengine.com/ark/region:ark+cn-beijing/endpoint")
+		return nil // 返回 nil 而不是退出程序
 	}
 	
 	// 读取 System Prompt 模板
 	templateBytes, err := os.ReadFile(systemPromptFilePath)
 	if err != nil {
-		log.Fatalf("Fatal: 无法读取 System Prompt 文件: %v", err)
+		log.Printf("⚠️  无法读取 System Prompt 文件: %v (LLM回退模式将不可用)\n", err)
+		return nil
 	}
 
+	log.Println("✅ 豆包 LLM 回退模式已初始化")
 	return &DoubaoProxy{
 		baseURL: "https://ark.cn-beijing.volces.com/api/v3/chat/completions", 
 		apiKey:  apiKey,
@@ -172,4 +178,42 @@ func cleanJSONString(s string) string {
 	}
 	s = strings.TrimSpace(s)
 	return s
+}
+
+// --------------------------------------------------------------------------------
+// DJ 决策结构体 (用于 WebSocket 和简化的 API)
+// --------------------------------------------------------------------------------
+
+type DJDecision struct {
+	DJScript              string              `json:"dj_script"`
+	MusicPrompts          []string            `json:"music_prompts"`
+	ActionReason          string              `json:"action_reason"`
+	NewConversationMemory []map[string]string `json:"new_conversation_memory"`
+	AudioURL              string              `json:"audio_url,omitempty"` // TTS 音频 URL (Coze 集成时使用)
+}
+
+// GetDJDecision 是 AnalyzeAndGenerate 的简化包装,用于 WebSocket 处理
+func (p *DoubaoProxy) GetDJDecision(userText string, currentGenre string, history []map[string]string) (*DJDecision, error) {
+	result, err := p.AnalyzeAndGenerate(
+		context.Background(),
+		userText,
+		currentGenre,      // contextScene
+		"幽默",            // hostPersonality
+		"text",            // callType
+		history,
+	)
+	if err != nil {
+		return nil, err
+	}
+
+	// 更新对话历史
+	newHistory := append(history, map[string]string{"role": "user", "content": userText})
+	newHistory = append(newHistory, map[string]string{"role": "assistant", "content": result.DjScript})
+
+	return &DJDecision{
+		DJScript:              result.DjScript,
+		MusicPrompts:          result.MusicPrompts,
+		ActionReason:          result.ActionReason,
+		NewConversationMemory: newHistory,
+	}, nil
 }

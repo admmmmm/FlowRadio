@@ -1,0 +1,26 @@
+{
+  "name": "flowradio-electron",
+  "version": "1.0.0",
+  "description": "FlowRadio AI DJ - Electron UI",
+  "main": "main.js",
+  "scripts": {
+    "start": "electron .",
+    "dev": "electron . --dev"
+  },
+  "keywords": [
+    "electron",
+    "ai",
+    "music",
+    "radio"
+  ],
+  "author": "",
+  "license": "MIT",
+  "devDependencies": {
+    "electron": "^28.0.0"
+  },
+  "dependencies": {
+    "@coze/api": "^1.3.9",
+    "dotenv": "^17.2.3",
+    "ws": "^8.16.0"
+  }
+}

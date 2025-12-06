@@ -16,11 +16,14 @@
 请**只返回** JSON 格式的回复，**不带任何前缀或解释**，格式如下：
 {
   "dj_script": "[你对用户的回复脚本，不超过100字]",
-  "new_genre": "[你决策的流派，若不切换则为 current_genre]",
+  "music_prompts": ["风格提示词1", "风格提示词2"],
+  "prompt_weights": [1.0, 0.5],
   "action_reason": "[流派切换的原因或聊天摘要]",
   "conversation_memory": "[不超过100字的对话摘要，供下一轮使用]",
   "style_recommendation": "default"
 }
+
+**重要**: music_prompts 必须始终返回数组，即使维持当前风格也要返回当前的风格描述。
 
 ---
 

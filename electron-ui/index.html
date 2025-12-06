@@ -1,0 +1,107 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>FlowRadio - AI DJ</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <div class="app-container">
+    <!-- 标题栏 (自定义) -->
+    <div class="titlebar">
+      <div class="titlebar-drag">FlowRadio 🎵</div>
+      <div class="titlebar-buttons">
+        <button class="btn-close" onclick="window.close()">✕</button>
+      </div>
+    </div>
+
+    <!-- 状态栏 -->
+    <div class="status-bar">
+      <div class="status-indicator">
+        <span class="dot" id="connectionDot"></span>
+        <span id="connectionStatus">未连接</span>
+        <button class="btn-reconnect" id="reconnectBtn" style="display: none;" title="重新连接">🔄</button>
+      </div>
+      <div class="current-genre" id="currentGenre">lofi</div>
+      <button class="btn-settings" id="openSettingsBtn" title="Lyria调试">⚙️</button>
+    </div>
+
+    <!-- Lyria 调试面板 (隐藏) -->
+    <div class="lyria-panel" id="lyriaPanel" style="display: none;">
+      <div class="panel-header">
+        <h3>🎛️ Lyria 调试面板</h3>
+        <button class="btn-close-panel" id="closeLyriaBtn">✕</button>
+      </div>
+      
+      <div class="panel-content">
+        <!-- 最后发送的参数显示 -->
+        <div class="section">
+          <h4>📤 最后发送的参数:</h4>
+          <pre id="lastSentParams" class="code-block">暂无数据</pre>
+        </div>
+
+        <!-- 手动发送表单 -->
+        <div class="section">
+          <h4>✍️ 手动发送参数:</h4>
+          <label>Genre (逗号分隔):</label>
+          <input type="text" id="manualGenre" placeholder="rock, energetic" value="rock, energetic, upbeat">
+          
+          <label>Instrument (逗号分隔):</label>
+          <input type="text" id="manualInstrument" placeholder="electric guitar, drums" value="electric guitar, drums, bass guitar">
+          
+          <label>Mood (逗号分隔):</label>
+          <input type="text" id="manualMood" placeholder="powerful, intense" value="powerful, intense, energetic">
+          
+          <label>Theme (逗号分隔):</label>
+          <input type="text" id="manualTheme" placeholder="motivational" value="motivational, achievement">
+          
+          <label>BPM:</label>
+          <input type="number" id="manualBPM" value="140" min="60" max="200">
+          
+          <label>Duration (秒):</label>
+          <input type="number" id="manualDuration" value="120" min="10" max="300">
+          
+          <button id="sendManualParams" class="btn-send-manual">🚀 发送到 Lyria</button>
+        </div>
+
+        <!-- 响应日志 -->
+        <div class="section">
+          <h4>📥 Lyria 响应:</h4>
+          <pre id="lyriaResponse" class="code-block">等待响应...</pre>
+        </div>
+      </div>
+    </div>
+
+    <!-- 聊天消息区 -->
+    <div class="chat-container" id="chatContainer">
+      <!-- 消息将动态插入这里 -->
+    </div>
+
+    <!-- 弹幕容器 -->
+    <div class="danmaku-container" id="danmakuContainer">
+      <!-- 弹幕将动态插入这里 -->
+    </div>
+
+    <!-- 输入区 -->
+    <div class="input-container">
+      <input 
+        type="text" 
+        id="userInput" 
+        placeholder="告诉 DJ 你想听什么..." 
+        autocomplete="off"
+      />
+      <button id="sendBtn" class="send-btn">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <path d="M22 2L11 13M22 2l-7 20-4-9-9-4 20-7z"/>
+        </svg>
+      </button>
+    </div>
+
+    <!-- 音频播放器 (隐藏) -->
+    <audio id="audioPlayer" style="display: none;"></audio>
+  </div>
+
+  <script src="renderer.js"></script>
+</body>
+</html>
