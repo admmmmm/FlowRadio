@@ -74,22 +74,13 @@ Write-Host "Step 1/3: Starting Lyria Music Service..." -ForegroundColor Yellow
 Start-Process powershell -ArgumentList "-NoExit", "-Command", "cd '$PSScriptRoot'; python lyria_service.py"
 Start-Sleep -Seconds 2
 
-# 2. Start Go Backend (use compiled executable)
+# 2. Start Go Backend (开发模式 - 使用 go run 确保代码修改立即生效)
 Write-Host "Step 2/3: Starting Go WebSocket Backend..." -ForegroundColor Yellow
+Write-Host "  Development mode: Using 'go run .' for instant code updates" -ForegroundColor Cyan
 
-# Check if executable exists, if not compile it
-if (-Not (Test-Path "$PSScriptRoot\backend\flowradio-ws.exe")) {
-    Write-Host "  Compiling Go backend..." -ForegroundColor Cyan
-    cd "$PSScriptRoot\backend"
-    go build -o flowradio-ws.exe main.go websocket_handler.go llm_proxy.go magenta_proxy.go coze_client.go
-    if ($LASTEXITCODE -ne 0) {
-        Write-Host "X Go compilation failed!" -ForegroundColor Red
-        exit 1
-    }
-    cd "$PSScriptRoot"
-}
-
-Start-Process powershell -ArgumentList "-NoExit", "-Command", "cd '$PSScriptRoot\backend'; .\flowradio-ws.exe"
+# 开发模式：直接使用 go run，确保每次代码修改都生效
+# 不使用编译好的 .exe，避免运行旧代码
+Start-Process powershell -ArgumentList "-NoExit", "-Command", "cd '$PSScriptRoot\backend'; go run ."
 Start-Sleep -Seconds 3
 
 # 3. Start Electron UI

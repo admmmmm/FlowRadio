@@ -489,8 +489,17 @@ def audio_stream():
     3. 正确的Float32->Int16转换 (*32768不是32767)
     4. 队列管理和错误处理
     """
+    # 检查 Lyria 会话是否启动
+    if playback_state == PlaybackState.STOPPED:
+        print("⚠️ 警告: 音频流请求,但 Lyria 未启动!")
+        return jsonify({
+            "error": "Lyria 会话未启动",
+            "state": playback_state.value,
+            "hint": "请先调用 POST /start 启动会话,或检查 GEMINI_API_KEY"
+        }), 503
+    
     def generate():
-        print("📡 [官方格式] 客户端连接到48kHz立体声流")
+        print(f"📡 [官方格式] 客户端连接到48kHz立体声流 (状态: {playback_state.value})")
         sent_count = 0
         consecutive_empty = 0  # 官方优化: 跟踪连续空队列
         chunk_batch = []  # 批量发送缓冲
@@ -617,6 +626,27 @@ if __name__ == '__main__':
     print("   GET /health - 健康检查")
     print("\n监听端口: 8000")
     print("="*70 + "\n")
+    
+    # 🔥 自动启动 Lyria 会话
+    print("🚀 自动启动 Lyria 会话...")
+    import requests
+    import time
+    
+    def auto_start_lyria():
+        time.sleep(2)  # 等待 Flask 启动
+        try:
+            resp = requests.post('http://localhost:8000/start', timeout=10)
+            if resp.status_code == 200:
+                print("✅ Lyria 会话自动启动成功!")
+            else:
+                print(f"⚠️ Lyria 启动返回: {resp.status_code}")
+        except Exception as e:
+            print(f"❌ Lyria 自动启动失败: {e}")
+            print("💡 请检查 GEMINI_API_KEY 是否正确设置")
+    
+    # 后台线程自动启动
+    import threading
+    threading.Thread(target=auto_start_lyria, daemon=True).start()
     
     app.run(host='0.0.0.0', port=8000, threaded=True, debug=False)
 

@@ -131,32 +131,72 @@ func (g *GlobalState) startLyriaMusicGeneration() {
 // 音频流转发器 (广播到 WebSocket)
 func (g *GlobalState) runAudioStreamForwarder() {
 	log.Println("--- 音频流转发器启动 ---")
+	
+	reconnectDelay := 5 * time.Second
+	consecutiveErrors := 0
 
 	for {
+		log.Printf("[AudioForwarder] 🔌 连接到 Lyria 音频流...")
 		stream, err := g.magentaProxy.GetAudioStream(context.Background())
 		if err != nil {
-			log.Printf("[AudioForwarder] 连接失败 (5秒后重试): %v", err)
-			time.Sleep(5 * time.Second)
+			consecutiveErrors++
+			delay := reconnectDelay * time.Duration(consecutiveErrors)
+			if delay > 30*time.Second {
+				delay = 30 * time.Second // 最多30秒
+			}
+			log.Printf("[AudioForwarder] ❌ 连接失败 (%v后重试): %v", delay, err)
+			time.Sleep(delay)
 			continue
 		}
 
+		log.Println("[AudioForwarder] ✅ 音频流已连接")
+		consecutiveErrors = 0 // 重置错误计数
+		
 		buf := make([]byte, 4096)
+		idleCount := 0 // 空闲读取计数
+		lastDataTime := time.Now()
+		
 		for {
+			// 设置读取超时 (避免永久阻塞)
+			// stream.SetReadDeadline(time.Now().Add(10 * time.Second))
+			
 			n, err := stream.Read(buf)
 			if err != nil {
 				if err != io.EOF {
-					log.Printf("[AudioForwarder] 读取流断开: %v", err)
+					log.Printf("[AudioForwarder] ⚠️ 读取流断开: %v", err)
+				} else {
+					log.Println("[AudioForwarder] 📡 流正常结束 (EOF)")
 				}
 				stream.Close()
+				
+				// 判断是否需要延迟重连
+				timeSinceLastData := time.Since(lastDataTime)
+				if timeSinceLastData < 2*time.Second {
+					// 数据流刚中断,立即重连
+					log.Println("[AudioForwarder] 🔄 立即重连 (刚有数据)")
+				} else {
+					// 长时间无数据,可能是空闲,延迟重连
+					log.Printf("[AudioForwarder] 💤 空闲超过 %.1fs,等待3秒后重连", timeSinceLastData.Seconds())
+					time.Sleep(3 * time.Second)
+				}
 				break
 			}
 
 			if n > 0 {
+				lastDataTime = time.Now()
+				idleCount = 0
+				
 				chunkData := make([]byte, n)
 				copy(chunkData, buf[:n])
 
 				// 广播到 WebSocket 客户端
 				g.WSManager.BroadcastAudioChunk(chunkData)
+			} else {
+				idleCount++
+				// 连续空读取,短暂休眠
+				if idleCount > 10 {
+					time.Sleep(100 * time.Millisecond)
+				}
 			}
 		}
 	}

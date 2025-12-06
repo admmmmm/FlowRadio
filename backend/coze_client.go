@@ -14,6 +14,9 @@ import (
 	"time"
 )
 
+// 详细模式配置 - 默认开启,可通过 COZE_VERBOSE=false 关闭
+var cozeVerboseMode = true
+
 // CozeWorkflowClient Coze工作流客户端
 type CozeWorkflowClient struct {
 	APIToken string
@@ -102,8 +105,8 @@ type AtmosphereResult struct {
 }
 
 const (
-	MainWorkflowID    = "7580359385462505491"
-	MainAppID         = "7580265822782799935"
+	MainWorkflowID    = "7580689179203403776" // 新工作流 - 包含 (debug)音乐提示词 节点
+	MainAppID         = "7580596786936086563"
 	CommentWorkflowID = "7580359385462521875"
 	CommentAppID      = "7580265822782799935"
 	APIBaseURL        = "https://api.coze.cn/v1/workflow/stream_run"
@@ -147,6 +150,20 @@ func (c *CozeWorkflowClient) CallMainWorkflow(textInput, processInput string) (*
 
 	for _, node := range nodes {
 		switch {
+		case strings.Contains(node.NodeTitle, "output") || strings.Contains(node.NodeTitle, "输出"):
+			// 🎵 音乐提示词节点或输出节点
+			fmt.Printf("🔍 处理节点 '%s':\n", node.NodeTitle)
+			fmt.Printf("   Content: %s\n", node.Content)
+			
+			// 尝试解析为 MusicParams
+			var musicParams MusicParams
+			if err := json.Unmarshal([]byte(node.Content), &musicParams); err == nil {
+				result.MusicParams = &musicParams
+				fmt.Println("   ✅ 成功解析为 MusicParams")
+			} else {
+				fmt.Printf("   ⚠️ 不是 MusicParams 格式: %v\n", err)
+			}
+			
 		case strings.Contains(node.NodeTitle, "(debug)音乐提示词"):
 			var musicParams MusicParams
 			if err := json.Unmarshal([]byte(node.Content), &musicParams); err == nil {
@@ -257,18 +274,9 @@ func (c *CozeWorkflowClient) GenerateMusicAndAtmosphere(userInput, context strin
 		return nil, fmt.Errorf("Main工作流调用失败: %v", err)
 	}
 
-	fmt.Printf("\n✅ Main工作流完成:\n")
-	if mainResult.MusicParams != nil {
-		fmt.Printf("   - 音乐配置: BPM=%d, Scale=%s\n",
-			mainResult.MusicParams.MusicConfig.BPM,
-			mainResult.MusicParams.MusicConfig.Scale)
-		fmt.Printf("   - 提示词数量: %d\n", len(mainResult.MusicParams.WeightedPrompts))
-	}
-	if len(mainResult.HostScript) > 50 {
-		fmt.Printf("   - 主持人播报: %s...\n", mainResult.HostScript[:50])
-	} else {
-		fmt.Printf("   - 主持人播报: %s\n", mainResult.HostScript)
-	}
+	fmt.Printf("\n✅ Main工作流完成 - 原始数据:\n")
+	mainResultJSON, _ := json.MarshalIndent(mainResult, "", "  ")
+	fmt.Printf("%s\n", string(mainResultJSON))
 
 	// 构建基础返回结果
 	result := &IntegrationResult{
@@ -283,14 +291,9 @@ func (c *CozeWorkflowClient) GenerateMusicAndAtmosphere(userInput, context strin
 		if err != nil {
 			fmt.Printf("⚠️ Comment Reply工作流调用失败: %v\n", err)
 		} else {
-			fmt.Printf("\n✅ Comment Reply工作流完成:\n")
-			fmt.Printf("   - 模拟评论数: %d\n", len(atmosphereResult.Comments))
-			fmt.Printf("   - 回复变体数: %d\n", len(atmosphereResult.Replies))
-			if len(atmosphereResult.SelectedReply) > 50 {
-				fmt.Printf("   - 选中回复: %s...\n", atmosphereResult.SelectedReply[:50])
-			} else {
-				fmt.Printf("   - 选中回复: %s\n", atmosphereResult.SelectedReply)
-			}
+			fmt.Printf("\n✅ Comment Reply工作流完成 - 原始数据:\n")
+			atmosphereJSON, _ := json.MarshalIndent(atmosphereResult, "", "  ")
+			fmt.Printf("%s\n", string(atmosphereJSON))
 
 			result.Atmosphere = &AtmosphereResult{
 				Comments:    atmosphereResult.Comments,
@@ -308,12 +311,17 @@ func (c *CozeWorkflowClient) GenerateMusicAndAtmosphere(userInput, context strin
 	return result, nil
 }
 
-// callWorkflow 通用工作流调用方法
+// callWorkflow 通用工作流调用方法 (暴力调试版 - 强制打印所有数据)
 func (c *CozeWorkflowClient) callWorkflow(req interface{}) ([]StreamNode, error) {
 	reqBody, err := json.Marshal(req)
 	if err != nil {
 		return nil, err
 	}
+
+	// 【强制打印】请求体
+	fmt.Println("\n============= 🔥 暴力调试：发送给 Coze 的数据 =============")
+	fmt.Println(string(reqBody))
+	fmt.Println("=========================================================\n")
 
 	httpReq, err := http.NewRequest("POST", c.BaseURL, bytes.NewBuffer(reqBody))
 	if err != nil {
@@ -323,66 +331,136 @@ func (c *CozeWorkflowClient) callWorkflow(req interface{}) ([]StreamNode, error)
 	httpReq.Header.Set("Authorization", "Bearer "+c.APIToken)
 	httpReq.Header.Set("Content-Type", "application/json")
 
-	// 增加超时时间到120秒,并设置更长的读取超时
 	client := &http.Client{
 		Timeout: 120 * time.Second,
-		Transport: &http.Transport{
-			ResponseHeaderTimeout: 30 * time.Second,  // 响应头超时
-			IdleConnTimeout:       90 * time.Second,  // 空闲连接超时
-		},
 	}
 
-	log.Printf("📡 调用Coze工作流,开始时间: %s", time.Now().Format("15:04:05"))
-	startTime := time.Now()
-
+	log.Printf("📡 发起请求...")
 	resp, err := client.Do(httpReq)
 	if err != nil {
-		log.Printf("❌ 请求失败 (耗时 %.1fs): %v", time.Since(startTime).Seconds(), err)
+		log.Printf("❌ 请求失败: %v", err)
 		return nil, err
 	}
 	defer resp.Body.Close()
 
-	log.Printf("✅ 收到响应头 (耗时 %.1fs), 状态码: %d", time.Since(startTime).Seconds(), resp.StatusCode)
-
 	if resp.StatusCode != http.StatusOK {
 		body, _ := io.ReadAll(resp.Body)
-		return nil, fmt.Errorf("HTTP %d: %s", resp.StatusCode, string(body))
+		// 【强制打印】错误响应
+		fmt.Printf("❌ HTTP 错误 %d: %s\n", resp.StatusCode, string(body))
+		return nil, fmt.Errorf("HTTP %d", resp.StatusCode)
 	}
 
-	// 解析流式响应
+	fmt.Println("\n============= 🌊 按包解析 Coze SSE 流 =============")
+
 	var nodes []StreamNode
 	scanner := bufio.NewScanner(resp.Body)
-	
-	// 增加scanner缓冲区大小,避免行太长导致的问题
 	buf := make([]byte, 0, 64*1024)
-	scanner.Buffer(buf, 1024*1024)  // 1MB最大token大小
+	scanner.Buffer(buf, 1024*1024)
+
+	// SSE 包解析状态
+	var currentPacket struct {
+		id    string
+		event string
+		data  string
+	}
+	packetCount := 0
 	
-	lineCount := 0
-	for scanner.Scan() {
-		lineCount++
-		line := scanner.Text()
-		if !strings.HasPrefix(line, "data: ") {
-			continue
+	// 🔍 调试函数:打印并处理当前包
+	processPacket := func() {
+		if currentPacket.data == "" {
+			return
 		}
-
-		dataStr := strings.TrimPrefix(line, "data: ")
+		
+		packetCount++
+		fmt.Printf("\n📦 ========== SSE包 #%d ========== 📦\n", packetCount)
+		fmt.Printf("ID: %s\n", currentPacket.id)
+		fmt.Printf("Event: %s\n", currentPacket.event)
+		
+		// 解析 JSON
 		var node StreamNode
-		if err := json.Unmarshal([]byte(dataStr), &node); err != nil {
-			log.Printf("⚠️ 跳过解析错误的行 %d: %v", lineCount, err)
-			continue
+		if err := json.Unmarshal([]byte(currentPacket.data), &node); err == nil {
+			fmt.Printf("节点标题: '%s'\n", node.NodeTitle)
+			fmt.Printf("节点类型: %s\n", node.NodeType)
+			fmt.Printf("节点ID: %s\n", node.NodeID)
+			
+			// 打印 content 的前150个字符
+			contentPreview := node.Content
+			if len(contentPreview) > 150 {
+				contentPreview = contentPreview[:150] + "..."
+			}
+			fmt.Printf("Content预览: %s\n", contentPreview)
+			
+			// 🔥 特别关注 "output" 节点 (音乐提示词)
+			if strings.ToLower(node.NodeTitle) == "output" || node.NodeTitle == "output" {
+				fmt.Println("\n🎵🎵🎵 【发现音乐提示词节点!!!】 🎵🎵🎵")
+				fmt.Println("完整 Content:")
+				fmt.Println(node.Content)
+			}
+			
+			// 打印格式化的 JSON (只有在特殊节点时才打印完整JSON)
+			if node.NodeTitle == "output" || node.NodeTitle == "输出" || strings.Contains(node.NodeTitle, "音乐") {
+				var prettyJSON bytes.Buffer
+				if err := json.Indent(&prettyJSON, []byte(currentPacket.data), "", "  "); err == nil {
+					fmt.Println("\n完整JSON数据:")
+					fmt.Println(prettyJSON.String())
+				}
+			}
+			
+			// 收集节点
+			if node.Content != "" && node.NodeType == "Message" {
+				nodes = append(nodes, node)
+			}
+		} else {
+			// JSON 解析失败
+			fmt.Printf("原始数据: %s\n", currentPacket.data)
+			fmt.Printf("⚠️ JSON解析失败: %v\n", err)
 		}
-
-		// 只保留有内容的Message节点
-		if node.Content != "" && node.NodeType == "Message" {
-			nodes = append(nodes, node)
-		}
+		
+		fmt.Println("======================================")
 	}
 
+	for scanner.Scan() {
+		line := scanner.Text()
+		
+		// 【调试】打印每一行原始数据
+		fmt.Printf("🔍 RAW: %q\n", line)
+
+		// 空行表示一个包结束
+		if strings.TrimSpace(line) == "" {
+			processPacket()
+			// 重置包状态
+			currentPacket.id = ""
+			currentPacket.event = ""
+			currentPacket.data = ""
+			continue
+		}
+
+		// 解析 SSE 字段
+		if strings.HasPrefix(line, "id:") {
+			// 如果已经有 id,说明新包开始了(即使没有空行)
+			if currentPacket.id != "" {
+				processPacket()
+				currentPacket.id = ""
+				currentPacket.event = ""
+				currentPacket.data = ""
+			}
+			currentPacket.id = strings.TrimSpace(strings.TrimPrefix(line, "id:"))
+		} else if strings.HasPrefix(line, "event:") {
+			currentPacket.event = strings.TrimSpace(strings.TrimPrefix(line, "event:"))
+		} else if strings.HasPrefix(line, "data:") {
+			currentPacket.data = strings.TrimSpace(strings.TrimPrefix(line, "data:"))
+		}
+	}
+	
+	// 处理最后一个包(如果没有空行结束)
+	processPacket()
+	
+	fmt.Printf("\n============= 🏁 流解析完成 (共 %d 个包) =============\n\n", packetCount)
+
 	if err := scanner.Err(); err != nil {
-		log.Printf("❌ 流式读取失败 (总耗时 %.1fs): %v", time.Since(startTime).Seconds(), err)
+		log.Printf("❌ 流读取错: %v", err)
 		return nil, err
 	}
 
-	log.Printf("✅ 工作流完成 (总耗时 %.1fs), 收到 %d 个Message节点", time.Since(startTime).Seconds(), len(nodes))
 	return nodes, nil
 }
