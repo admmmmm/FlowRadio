@@ -2,6 +2,65 @@
 
 基于 Lyria 音乐生成 + Coze AI 工作流的智能电台系统
 
+## 环境需求
+
+### 必需软件
+
+- **Python 3.10+** - Lyria音乐生成服务
+  - 安装地址: https://www.python.org/downloads/
+  
+- **Go 1.21+** - WebSocket后端服务
+  - 安装地址: https://go.dev/dl/
+  
+- **Node.js 18+** - Electron前端UI
+  - 安装地址: https://nodejs.org/
+
+### Python依赖
+
+```bash
+pip install google-genai flask numpy
+```
+
+或使用项目的requirements.txt (如果有):
+```bash
+pip install -r requirements.txt
+```
+
+### API密钥 (必需)
+
+1. **GEMINI_API_KEY** (必需)
+   - 用于Lyria音乐生成
+   - 获取地址: https://aistudio.google.com/app/apikey
+
+2. **COZE_API_TOKEN** (推荐)
+   - 用于AI主持人和气氛组功能
+   - 获取地址: https://www.coze.cn/open/oauth/pats
+   - 如不配置,将使用Doubao LLM回退模式
+
+3. **VOLCANO_API_KEY** (可选)
+   - 仅在未配置Coze时需要
+   - 用于Doubao LLM回退模式
+   - 获取地址: https://console.volcengine.com/ark/
+
+### 配置步骤
+
+1. 复制环境变量模板:
+   ```powershell
+   Copy-Item .env.example .env
+   ```
+
+2. 编辑 `.env` 文件,填入你的API密钥:
+   ```env
+   GEMINI_API_KEY=your_gemini_api_key_here
+   COZE_API_TOKEN=your_coze_token_here
+   ```
+
+3. 安装Node.js依赖:
+   ```powershell
+   cd electron-ui
+   npm install
+   ```
+
 ## 快速开始
 
 ### 一键启动
