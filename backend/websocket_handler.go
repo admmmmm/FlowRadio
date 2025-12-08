@@ -159,7 +159,7 @@ func (g *GlobalState) handleUserInputWithCoze(userText string) {
 	// 调用 Main 工作流
 	result, err := client.GenerateMusicAndAtmosphere(
 		userText,
-		"用户在线听歌", // 上下文
+		"用户在线听歌。Host1负责对音乐做出评论，Host2负责回复弹幕。", // 上下文
 		true,           // 启用气氛组
 	)
 
@@ -173,12 +173,23 @@ func (g *GlobalState) handleUserInputWithCoze(userText string) {
 		return
 	}
 
-	// 1. 广播主持人播报
-	g.WSManager.BroadcastMessage("HOST_MESSAGE", map[string]interface{}{
+	// 1. 广播主持人播报 (包含原始数据)
+	messageData := map[string]interface{}{
 		"script":  result.HostScript,
 		"tts_url": result.HostTTSURL,
 		"source":  "Coze Main工作流",
-	})
+	}
+	// 添加原始主持人输出数据供前端智能解析
+	if result.RawHostOutput != nil {
+		messageData["raw_host"] = result.RawHostOutput
+		log.Printf("📤 [环节2-发送数据] 准备发送HOST_MESSAGE: script='%s', tts_url='%s', raw_host=%+v", 
+			messageData["script"].(string)[:min(30, len(messageData["script"].(string)))], 
+			messageData["tts_url"].(string)[:min(50, len(messageData["tts_url"].(string)))], 
+			messageData["raw_host"])
+	} else {
+		log.Printf("⚠️ [环节2-发送数据] RawHostOutput为nil,只发送script和tts_url")
+	}
+	g.WSManager.BroadcastMessage("HOST_MESSAGE", messageData)
 
 	// 2. 发送音乐参数到 Lyria
 	if result.MusicParams != nil {
@@ -198,10 +209,13 @@ func (g *GlobalState) handleUserInputWithCoze(userText string) {
 	// 3. 广播气氛组内容
 	if result.Atmosphere != nil {
 		g.WSManager.BroadcastMessage("ATMOSPHERE", map[string]interface{}{
-			"comments":     result.Atmosphere.Comments,
-			"long_comment": result.Atmosphere.LongComment,
-			"reply":        result.Atmosphere.Reply,
-			"tts_url":      result.Atmosphere.TTSURL,
+			"comments":         result.Atmosphere.Comments,
+			"long_comment":     result.Atmosphere.LongComment,
+			"reply":            result.Atmosphere.Reply,
+			"tts_url":          result.Atmosphere.TTSURL,
+			"replies":          result.Atmosphere.Replies,
+			"selected_reply":   result.Atmosphere.SelectedReply,
+			"selected_tts_url": result.Atmosphere.SelectedTTSURL,
 		})
 	}
 }

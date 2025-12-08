@@ -7,6 +7,12 @@
   <link rel="stylesheet" href="style.css">
 </head>
 <body>
+  <!-- 动态背景容器 -->
+  <div id="dynamic-background"></div>
+  
+  <!-- Live2D 容器 -->
+  <div id="live2d-container"></div>
+  
   <div class="app-container">
     <!-- 标题栏 (自定义) -->
     <div class="titlebar">
@@ -24,8 +30,25 @@
         <button class="btn-reconnect" id="reconnectBtn" style="display: none;" title="重新连接">🔄</button>
       </div>
       <div class="current-genre" id="currentGenre">lofi</div>
-      <button class="btn-settings" id="openSettingsBtn" title="Lyria调试">⚙️</button>
+      
+      <!-- 设置菜单容器 -->
+      <div class="settings-container">
+        <button class="btn-settings" id="openSettingsBtn" title="设置">⚙️</button>
+        <div class="settings-menu" id="settingsMenu" style="display: none;">
+          <div class="menu-item" id="menuLyria">🎛️ Lyria 控制台</div>
+          <div class="menu-item" id="menuBackground">🖼️ 切换背景</div>
+          <div class="menu-item" id="menuAbout">ℹ️ 关于 FlowRadio</div>
+        </div>
+      </div>
     </div>
+
+    <!-- Super Chat 容器 -->
+    <div class="superchat-container" id="superChatContainer">
+      <!-- SC 卡片将动态插入这里 -->
+    </div>
+
+    <!-- Live2D 名字标签 -->
+    <div class="character-label" id="characterLabel">Mao</div>
 
     <!-- Lyria 调试面板 (隐藏) -->
     <div class="lyria-panel" id="lyriaPanel" style="display: none;">
@@ -63,6 +86,14 @@
           <input type="number" id="manualDuration" value="120" min="10" max="300">
           
           <button id="sendManualParams" class="btn-send-manual">🚀 发送到 Lyria</button>
+        </div>
+        
+        <!-- 快速人工输入表单 (Magenta) -->
+        <div class="section">
+          <h4>🎹 Magenta 快速输入:</h4>
+          <label>Prompt (自然语言):</label>
+          <input type="text" id="magentaPrompt" placeholder="A sad piano melody in C minor" value="A sad piano melody in C minor">
+          <button id="sendMagentaPrompt" class="btn-send-manual" style="background: linear-gradient(135deg, #ff9a9e 0%, #fecfef 99%); color: #333;">🎨 生成 Magenta 旋律</button>
         </div>
 
         <!-- 响应日志 -->

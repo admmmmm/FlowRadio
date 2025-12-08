@@ -1,0 +1,1638 @@
+/**
+ * 渲染进程主入口
+ */
+
+const { ipcRenderer } = require('electron');
+
+// ⚠️ 必须在 PIXI 之前导入 @pixi/unsafe-eval
+console.log('[Renderer] Loading @pixi/unsafe-eval...');
+require('@pixi/unsafe-eval');
+console.log('[Renderer] ✓ @pixi/unsafe-eval loaded');
+
+console.log('[Renderer] Loading PIXI...');
+const PIXI = require('pixi.js');
+console.log('[Renderer] PIXI loaded:', typeof PIXI, PIXI ? 'OK' : 'FAIL');
+console.log('[Renderer] PIXI.Application:', typeof PIXI?.Application);
+
+const LayoutManager = require('./layout/LayoutManager');
+const TopBar = require('./layout/TopBar');
+const BottomInput = require('./layout/BottomInput');
+const Live2DArea = require('./layout/Live2DArea');
+const AudioAnalyzer = require('./audio/AudioAnalyzer');
+const TetrisNeonBackground = require('./backgrounds/TetrisNeonBackground');
+
+class FlowRadioApp {
+  constructor() {
+    this.layoutManager = null;
+    this.topBar = null;
+    this.bottomInput = null;
+    this.live2dLeft = null;
+    this.live2dRight = null;
+    this.live2dController = null;
+    this.audioAnalyzer = null;
+    this.pixiApp = null;
+    this.currentBackground = null;
+    
+    // WebSocket 连接
+    this.ws = null;
+    this.wsReconnectTimer = null;
+    
+    // Lyria 音频流
+    this.lyriaAudio = null;
+    this.lyriaConnected = false;
+    
+    // 音频播放
+    this.audioContext = null;
+    this.audioQueue = [];
+    this.isPlayingAudio = false;
+    this.nextStartTime = 0;
+    this.isFirstChunk = true;
+    this.preBufferQueue = [];
+    this.isPreBuffering = true;
+    this.PRE_BUFFER_SIZE = 10; // 预缓冲块数 (约210ms)
+    this.analyser = null;
+    
+    // 聊天历史和设置面板
+    this.chatHistory = [];
+    this.maxHistorySize = 100;
+    this.settingsPanel = null;
+    
+    // 从 localStorage 加载历史
+    try {
+      const saved = localStorage.getItem('chatHistory');
+      if (saved) {
+        this.chatHistory = JSON.parse(saved);
+      }
+    } catch (e) {
+      console.warn('Failed to load chat history:', e);
+    }
+    
+    // 语音队列
+    this.speechQueue = [];
+    this.isSpeaking = false;
+
+    // SC 队列
+    this.scQueue = [];
+    this.isProcessingSC = false;
+  }
+
+  async init() {
+    console.log('[FlowRadioApp] ========== INITIALIZATION START ==========');
+    
+    // 获取容器元素
+    const container = document.getElementById('app-container');
+    if (!container) {
+      throw new Error('app-container not found!');
+    }
+    console.log('[FlowRadioApp] ✓ Container found:', container);
+
+    try {
+      console.log('[FlowRadioApp] Step 1: Creating LayoutManager...');
+      this.layoutManager = new LayoutManager(container);
+      console.log('[FlowRadioApp] ✓ LayoutManager created');
+
+      // 创建顶部栏
+      console.log('[FlowRadioApp] Step 2: Creating TopBar...');
+      this.topBar = new TopBar(container);
+      this.layoutManager.registerElement('topBar', this.topBar.element);
+      console.log('[FlowRadioApp] ✓ TopBar created');
+
+      // 创建底部输入
+      console.log('[FlowRadioApp] Step 3: Creating BottomInput...');
+      this.bottomInput = new BottomInput(container, (message) => {
+        this.handleUserMessage(message);
+      });
+      this.layoutManager.registerElement('bottomInput', this.bottomInput.element);
+      console.log('[FlowRadioApp] ✓ BottomInput created');
+    } catch (error) {
+      console.error('[FlowRadioApp] ❌ FATAL ERROR during basic UI initialization:', error);
+      console.error('[FlowRadioApp] Stack trace:', error.stack);
+      throw error;
+    }
+
+    try {
+      // 创建 Live2D 区域 (已废弃，改用 iframe)
+      console.log('[FlowRadioApp] Step 4: Skipping legacy Live2DArea...');
+      // this.live2dLeft = new Live2DArea(container, 'left');
+      // this.live2dRight = new Live2DArea(container, 'right');
+      // this.layoutManager.registerElement('live2dLeft', this.live2dLeft.element);
+      // this.layoutManager.registerElement('live2dRight', this.live2dRight.element);
+      
+      // ⚠️ 暂时跳过 PixiJS 背景（简化调试）
+      console.log('[FlowRadioApp] Step 5: Skipping PixiJS background (simplified mode)...');
+      // await this.initPixiBackground();
+      // this.tetrisBackground = new TetrisNeonBackground(this.pixiApp);
+      // this.currentBackground = this.tetrisBackground;
+      console.log('[FlowRadioApp] ✓ Background skipped');
+
+      // 初始化 Live2D（使用独立仓库）
+      console.log('[FlowRadioApp] Step 6: Initializing Live2D iframe...');
+      await this.initLive2D();
+      console.log('[FlowRadioApp] ✓ Live2D iframe initialized');
+
+      // 连接后端服务
+      console.log('[FlowRadioApp] Step 7: Connecting to backend...');
+      this.connectBackend();
+      console.log('[FlowRadioApp] ✓ Backend connection initiated');
+
+      // ⚠️ 暂时跳过 Lyria 音乐服务（简化调试）
+      console.log('[FlowRadioApp] Step 8: Skipping Lyria (simplified mode)...');
+      // this.connectLyria();
+      console.log('[FlowRadioApp] ✓ Lyria skipped');
+
+      // 监听布局变化
+      window.addEventListener('layoutResize', (e) => {
+        this.handleResize(e.detail);
+      });
+
+      // 监听Live2D iframe的消息
+      window.addEventListener('message', (event) => {
+        const { type, success, result, error, visible, state } = event.data;
+        
+        if (type === 'live2d-ready') {
+          console.log('[Live2D] ✅ iframe已就绪');
+          this.live2dReady = true;  // ✅ 设置就绪标志
+        } else if (type === 'live2d-say-result') {
+          if (success) {
+            console.log('[Live2D] ✅ 气泡显示成功:', result);
+          } else {
+            console.error('[Live2D] ❌ 气泡显示失败:', error);
+          }
+        } else if (type === 'panel-toggled') {
+          console.log('[Live2D] Panel状态:', visible ? 'ON' : 'OFF', state);
+          this.topBar.showMessage(`🎭 Panel ${visible ? '已开启' : '已关闭'}`, 2000, 'info');
+          
+          // 更新设置面板按钮文本
+          const toggleBtn = document.getElementById('toggle-live2d-panel');
+          if (toggleBtn) {
+            toggleBtn.textContent = visible ? '关闭 Panel' : '开启 Panel';
+          }
+        }
+      });
+
+      // 初始化设置面板
+      console.log('[FlowRadioApp] Step 9: Initializing settings panel...');
+      this.initSettingsPanel();
+      console.log('[FlowRadioApp] ✓ Settings panel initialized');
+
+      // 刷新聊天历史 (确保启动时显示)
+      console.log('[FlowRadioApp] Step 10: Refreshing chat history...');
+      this.refreshChatHistory();
+      console.log('[FlowRadioApp] ✓ Chat history refreshed');
+
+      // 显示欢迎消息
+      this.topBar.showMessage('🎵 FlowRadio AI DJ 已启动', 3000, 'superchat');
+
+      console.log('[FlowRadioApp] ========== INITIALIZATION COMPLETE ==========');
+    } catch (error) {
+      console.error('[FlowRadioApp] ❌ ERROR during post-initialization:', error);
+      console.error('[FlowRadioApp] Stack trace:', error.stack);
+      // 不抛出错误，让应用继续运行
+    }
+  }
+
+  /**
+   * 初始化 PixiJS 背景
+   */
+  async initPixiBackground() {
+    console.log('[PixiBackground] Creating background container...');
+    const bgContainer = document.createElement('div');
+    bgContainer.id = 'background-container';
+    bgContainer.style.cssText = `
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      z-index: 1;
+    `;
+    document.getElementById('app-container').appendChild(bgContainer);
+    console.log('[PixiBackground] Container created');
+
+    // 创建 PixiJS 应用
+    console.log('[PixiBackground] Creating PIXI.Application...');
+    console.log('[PixiBackground] Window size:', window.innerWidth, 'x', window.innerHeight);
+    
+    this.pixiApp = new PIXI.Application({
+      width: window.innerWidth,
+      height: window.innerHeight,
+      backgroundColor: 0x000000,
+      antialias: true,
+      resolution: window.devicePixelRatio || 1,
+      autoDensity: true,
+      eventMode: 'passive',
+      eventFeatures: {
+        move: true,
+        globalMove: false,
+        click: true,
+        wheel: false
+      }
+    });
+    console.log('[PixiBackground] ✓ PIXI.Application created');
+
+    bgContainer.appendChild(this.pixiApp.view);
+
+    // 启动游戏循环
+    this.pixiApp.ticker.add((delta) => {
+      const dt = delta / 60; // 转换为秒
+      if (this.currentBackground) {
+        this.currentBackground.update(dt);
+      }
+    });
+
+    // 等待 AudioAnalyzer（稍后初始化）
+    console.log('[FlowRadioApp] PixiJS initialized');
+  }
+
+  /**
+   * 初始化 Live2D（使用独立 Live2D 仓库）
+   */
+  async initLive2D() {
+    try {
+      // 等待 Live2D 库加载（由 iframe 提供）
+      await this.waitForLive2D();
+      
+      console.log('[FlowRadioApp] Live2D initialized from external repo');
+    } catch (error) {
+      console.warn('[FlowRadioApp] Live2D initialization skipped:', error.message);
+    }
+  }
+
+  /**
+   * 等待 Live2D 初始化完成
+   */
+  waitForLive2D() {
+    return new Promise((resolve, reject) => {
+      const timeout = setTimeout(() => {
+        console.warn('[Live2D] Init timeout - continuing anyway');
+        resolve(); // 不再reject，允许继续
+      }, 10000);
+
+      const checkInterval = setInterval(() => {
+        try {
+          // 检查 iframe 中的 Live2D 是否已加载
+          const iframe = document.getElementById('live2d-frame');
+          if (iframe && iframe.contentWindow && iframe.contentWindow.live2dController) {
+            clearTimeout(timeout);
+            clearInterval(checkInterval);
+            this.live2dController = iframe.contentWindow.live2dController;
+            console.log('[Live2D] ✓ Controller accessed successfully');
+            resolve();
+          }
+        } catch (error) {
+          // 跨域错误是预期的，静默处理
+          // console.log('[Live2D] Waiting for iframe load...');
+        }
+      }, 100);
+    });
+  }
+
+  /**
+   * 连接后端 WebSocket 服务
+   */
+  async connectBackend() {
+    const wsUrl = 'ws://localhost:8080/ws';
+    
+    console.log('[WebSocket] 🔌 Attempting to connect to:', wsUrl);
+    
+    try {
+      this.ws = new WebSocket(wsUrl);
+
+      this.ws.onopen = (e) => {
+        console.log('[WebSocket] ✅ OPEN - Connected successfully!', e);
+        if (this.topBar) {
+          this.topBar.showMessage('✅ 已连接到后端服务', 2000, 'normal');
+        }
+      };
+
+      this.ws.onmessage = (event) => {
+        try {
+          const data = JSON.parse(event.data);
+          console.log('[WebSocket] 📩 Received:', data);
+          this.handleBackendMessage(data);
+        } catch (error) {
+          console.error('[WebSocket] ❌ Message parse error:', error);
+        }
+      };
+
+      this.ws.onerror = (e) => {
+        console.error('[WebSocket] ❌ ERROR:', e);
+        console.error('[WebSocket] Error type:', e.type);
+        console.error('[WebSocket] Error message:', e.message || 'Connection failed');
+        if (this.topBar) {
+          this.topBar.showMessage('❌ 后端连接错误', 2000, 'warning');
+        }
+      };
+
+      this.ws.onclose = (e) => {
+        console.log('[WebSocket] 🔴 CLOSED - Code:', e.code, 'Reason:', e.reason || 'No reason');
+        console.log('[WebSocket] Clean close:', e.wasClean);
+        if (this.topBar) {
+          this.topBar.showMessage('⚠️ 后端连接断开，重连中...', 2000, 'warning');
+        }
+        
+        // 5 秒后重连
+        this.wsReconnectTimer = setTimeout(() => {
+          console.log('[WebSocket] 🔄 Reconnecting...');
+          this.connectBackend();
+        }, 5000);
+      };
+    } catch (error) {
+      console.error('[WebSocket] ❌ Connection failed:', error);
+      if (this.topBar) {
+        this.topBar.showMessage('❌ 无法连接后端服务', 3000, 'warning');
+      }
+    }
+  }
+
+  /**
+   * 处理后端 WebSocket 消息
+   */
+  handleBackendMessage(data) {
+    console.log('[WebSocket] Received:', data);
+
+    switch (data.type) {
+      case 'HOST_MESSAGE':
+        // Coze主持人播报 - 主要消息类型
+        this.handleHostMessage(data);
+        break;
+
+      case 'MUSIC_PARAMS':
+        // 音乐参数更新
+        this.handleMusicParams(data);
+        break;
+
+      case 'ATMOSPHERE':
+        // 气氛组评论
+        this.handleAtmosphere(data);
+        break;
+
+      case 'AUDIO_CHUNK':
+        // 音频数据块
+        this.handleAudioChunk(data);
+        break;
+
+      case 'chat_response':
+        // 传统AI回复(兼容旧版)
+        this.topBar.showMessage(`🤖 ${data.message}`, 5000, 'normal');
+        if (this.live2dController && data.action) {
+          this.triggerLive2DAction(data.action);
+        }
+        break;
+
+      case 'music_style_changed':
+        // 音乐风格变化
+        this.topBar.showMessage(`🎵 切换到 ${data.style} 风格`, 2000, 'normal');
+        break;
+
+      case 'system_notification':
+        // 系统通知
+        this.topBar.showMessage(data.message, 3000, 'warning');
+        break;
+
+      default:
+        console.log('[WebSocket] Unknown message type:', data.type);
+    }
+  }
+
+  /**
+   * 处理主持人播报消息
+   */
+  handleHostMessage(data) {
+    console.log('[Coze] 📦 收到HOST_MESSAGE完整数据:', data);
+    
+    // BroadcastMessage 自动包装了一层 {type, data}
+    // 实际数据在 data.data 中: {script, tts_url, source, raw_host}
+    const messageData = data.data || data;
+    let { script, tts_url, source, raw_host } = messageData;
+    
+    // 智能解析:优先使用script,否则从raw_host提取
+    if (!script && raw_host) {
+      console.log('[Coze] 🔍 script为空,尝试从raw_host解析:', raw_host);
+      script = raw_host.host1 || raw_host.host2 || '';
+      tts_url = tts_url || raw_host.tts || '';
+      console.log('[Coze] ✅ 从raw_host解析:', { script: script.substring(0, 50), tts_url });
+    }
+    
+    console.log('[Coze] 📢 主持人播报:', script || '(空)');
+    console.log('[Coze] 🎯 TTS URL:', tts_url || '(空)');
+    console.log('[Coze] 📍 来源:', source);
+    
+    if (!script) {
+      console.error('[Coze] ❌ HOST_MESSAGE 缺少 script 字段,完整数据:', messageData);
+      return;
+    }
+
+    // 加入语音队列
+    this.enqueueSpeech({
+      text: script,
+      audioUrl: tts_url,
+      role: 'AI'
+    });
+    
+    // 保存到聊天历史
+    this.saveChatHistory('AI', script, tts_url);
+  }
+
+  /**
+   * 处理音乐参数
+   */
+  handleMusicParams(data) {
+    const { music_config, weighted_prompts, reasoning } = data;
+    
+    console.log('[Coze] 🎵 音乐参数:', data);
+    
+    // 重置音频缓冲(新音乐开始)
+    this.isFirstChunk = true;
+    this.isPreBuffering = true;
+    this.preBufferQueue = [];
+    console.log('[Audio] 🔄 音乐切换,重置音频缓冲');
+    
+    // 显示提示
+    const bpm = music_config?.bpm || '?';
+    const mainPrompt = weighted_prompts?.[0]?.text || 'unknown';
+    this.topBar.showMessage(`🎼 新音乐: ${mainPrompt} @ ${bpm} BPM`, 3000, 'normal');
+  }
+
+  /**
+   * 处理气氛组评论
+   */
+  handleAtmosphere(data) {
+    // 兼容旧版和新版数据结构
+    // 新版: { replies: [], tts_urls: [], selected_reply: "...", selected_tts_url: "..." }
+    // 旧版: { comments: [], reply: "...", tts_url: "..." }
+    
+    // 修复: data 可能被包裹在 data.data 中 (BroadcastMessage 的行为)
+    const payload = (data.data && data.data.comments) ? data.data : data;
+    
+    const { comments, reply, tts_url, selected_reply, selected_tts_url, replies } = payload;
+    
+    console.log('[Coze] 💬 气氛组 RAW DATA:', JSON.stringify(data, null, 2));
+    console.log('[Coze] 🔍 Parsed fields:', { 
+        hasComments: !!comments, 
+        hasReplies: !!replies, 
+        selectedReply: selected_reply, 
+        selectedTTS: selected_tts_url 
+    });
+    
+    const baseDelay = 8000; // 基础延迟8秒
+    
+    // 1. 处理评论 (转为弹幕)
+    // 优先使用 replies 作为虚拟弹幕 (如果 comments 不存在)
+    // 逻辑: replies 列表中的内容其实就是虚拟观众的评论
+    const danmakuSource = (comments && comments.length > 0) ? comments : replies;
+
+    if (danmakuSource && danmakuSource.length > 0) {
+      // 随机选择1-3个评论显示
+      const numToShow = Math.min(3, danmakuSource.length);
+      const shuffled = [...danmakuSource].sort(() => 0.5 - Math.random());
+      
+      shuffled.slice(0, numToShow).forEach((comment, idx) => {
+        // 过滤掉被选中的回复 (避免重复)
+        if (comment === selected_reply) return;
+
+        const randomDelay = baseDelay + idx * (1500 + Math.random() * 2000);
+        setTimeout(() => {
+          const randomUser = `User${Math.floor(Math.random() * 1000)}`;
+          this.addDanmaku(comment, '#fff', randomUser);
+        }, randomDelay);
+      });
+    }
+    
+    // 2. 处理回复 (Mao说话)
+    let replyText = '';
+    let replyAudio = '';
+    
+    // 优先使用新版字段
+    if (selected_reply) {
+      replyText = selected_reply;
+      replyAudio = selected_tts_url || '';
+    } 
+    // 回退到旧版字段
+    else if (reply) {
+      replyText = reply;
+      replyAudio = tts_url || '';
+      
+      // 尝试解析旧版JSON格式
+      try {
+        if (reply.trim().startsWith('{')) {
+          const replyObj = JSON.parse(reply);
+          const replyKeys = Object.keys(replyObj).filter(k => k.startsWith('r'));
+          if (replyKeys.length > 0) {
+            const randomKey = replyKeys[Math.floor(Math.random() * replyKeys.length)];
+            replyText = replyObj[randomKey];
+            const linkKey = randomKey.replace('r', 'link');
+            if (replyObj[linkKey]) {
+              replyAudio = replyObj[linkKey];
+            }
+          }
+        }
+      } catch (e) {
+        console.warn('[Coze] 解析回复JSON失败,使用原始文本:', e);
+      }
+    }
+
+    // 如果有回复内容，加入队列
+    if (replyText) {
+      const replyDelay = baseDelay + (comments ? comments.length : 0) * 3500 + Math.random() * 2000;
+      
+      setTimeout(() => {
+        console.log('[Coze] 🎤 Mao即将说话:', replyText);
+        
+        // 加入语音队列 (Role = Mao)
+        this.enqueueSpeech({
+          text: replyText,
+          audioUrl: replyAudio,
+          role: 'Mao'  // ✅ 明确指定角色为 Mao
+        });
+        
+        // 保存到聊天历史 (Role = Mao)
+        this.saveChatHistory('Mao', replyText, replyAudio);
+      }, replyDelay);
+    }
+  }
+
+  /**
+   * 语音队列管理
+   */
+  enqueueSpeech(item) {
+    this.speechQueue.push(item);
+    this.processSpeechQueue();
+  }
+
+  async processSpeechQueue() {
+    if (this.isSpeaking || this.speechQueue.length === 0) return;
+    
+    this.isSpeaking = true;
+    const item = this.speechQueue.shift();
+    
+    try {
+      console.log('[Speech] Processing:', item.text.substring(0, 20) + '...');
+      
+      // 1. 获取音频时长 (如果可能)
+      let duration = 5000; // 默认 5秒
+      if (item.audioUrl) {
+        try {
+          duration = await this.getAudioDuration(item.audioUrl) * 1000;
+          console.log('[Speech] Audio duration:', duration, 'ms');
+        } catch (e) {
+          console.warn('[Speech] Failed to get duration, using default:', e);
+          // 估算时长: 每字 200ms + 1000ms 缓冲
+          duration = item.text.length * 200 + 1000;
+        }
+      } else {
+        duration = item.text.length * 200 + 1000;
+      }
+      
+      // 2. 触发 Live2D 说话
+      // 根据 role 决定 characterId
+      // 假设 'AI' 是 Host 1 (Hiyori), 'Mao' 是 Mao
+      // 如果 role 未知，默认 Hiyori
+      const characterId = (item.role === 'Mao') ? 'mao' : 'hiyori';
+      
+      // 强制在 Renderer 端播放音频 (双重保险)
+      // 注意: 如果 Live2D 也播，会有重音。但为了确保有声音，我们先播。
+      // 理想情况下 Live2D 应该负责播。
+      if (item.audioUrl) {
+        console.log('[Speech] 🔊 Playing audio in Renderer:', item.audioUrl);
+        const audio = new Audio(item.audioUrl);
+        audio.volume = 1.0;
+        audio.play()
+          .then(() => console.log('[Speech] ✅ Renderer audio started'))
+          .catch(e => console.warn('[Speech] ❌ Renderer audio play failed:', e));
+      }
+
+      this.triggerLive2DSpeech(item.text, item.audioUrl, characterId);
+      
+      // 3. 等待播放完成 (加一点缓冲)
+      await new Promise(resolve => setTimeout(resolve, duration + 500));
+      
+    } catch (error) {
+      console.error('[Speech] Error processing queue item:', error);
+    } finally {
+      this.isSpeaking = false;
+      // 处理下一个
+      this.processSpeechQueue();
+    }
+  }
+
+  /**
+   * 获取音频时长
+   */
+  getAudioDuration(url) {
+    return new Promise((resolve, reject) => {
+      const audio = new Audio(url);
+      audio.onloadedmetadata = () => resolve(audio.duration);
+      audio.onerror = () => reject('Load failed');
+      // 设置超时防止卡死
+      setTimeout(() => reject('Timeout'), 5000);
+    });
+  }
+
+  /**
+   * 触发Live2D说话(显示气泡) - 使用postMessage跨域通信
+   */
+  async triggerLive2DSpeech(text, audioUrl = null, characterId = 'hiyori') {
+    try {
+      console.log('[Live2D] 准备显示气泡:', { text, audioUrl, characterId });
+      
+      const iframe = document.getElementById('live2d-frame');
+      if (!iframe) {
+        console.error('[Live2D] ❌ iframe元素未找到');
+        return;
+      }
+      
+      if (!iframe.contentWindow) {
+        console.error('[Live2D] ❌ iframe.contentWindow不可用');
+        return;
+      }
+
+      // 等待iframe完全加载
+      await this.waitForLive2DReady();
+
+      // ✅ 使用postMessage跨域通信
+      console.log('[Live2D] 📤 Sending say command via postMessage');
+      iframe.contentWindow.postMessage({
+        type: 'live2d-say',
+        data: {
+          id: characterId,
+          text: text,
+          audioUrl: audioUrl, // 依然传给 Live2D，以便它做口型 (如果它支持)
+          motion: '说话',
+          expression: null,
+          crossOrigin: 'anonymous',
+          charsPerSec: 8,
+          fontSize: 18,
+          maxLines: 3,
+          maxCharsPerLine: 14
+        }
+      }, '*');
+      
+    } catch (error) {
+      console.error('[Live2D] ❌ 触发说话失败:', error);
+      console.error('[Live2D] 错误栈:', error.stack);
+    }
+  }
+
+  /**
+   * 等待Live2D iframe就绪 - 使用live2dReady标志而非跨域访问
+   */
+  waitForLive2DReady() {
+    return new Promise((resolve) => {
+      // ✅ 如果已经收到live2d-ready消息,直接resolve
+      if (this.live2dReady) {
+        resolve();
+        return;
+      }
+
+      // 等待最多5秒
+      let attempts = 0;
+      const checkInterval = setInterval(() => {
+        attempts++;
+        if (this.live2dReady) {
+          clearInterval(checkInterval);
+          console.log('[Live2D] ✅ iframe已就绪(通过postMessage验证)');
+          resolve();
+        } else if (attempts > 50) {
+          clearInterval(checkInterval);
+          console.warn('[Live2D] ⚠️ iframe等待超时,继续尝试发送');
+          resolve();
+        }
+      }, 100);
+    });
+  }
+
+  /**
+   * 保存聊天历史
+   */
+  saveChatHistory(role, message, audioUrl = null) {
+    this.chatHistory.push({
+      role: role,        // 'User' 或 'AI'
+      message: message,
+      audioUrl: audioUrl,
+      timestamp: Date.now()
+    });
+
+    // 限制历史记录大小
+    if (this.chatHistory.length > this.maxHistorySize) {
+      this.chatHistory.shift();
+    }
+
+    // 保存到 localStorage
+    try {
+      localStorage.setItem('chatHistory', JSON.stringify(this.chatHistory));
+    } catch (e) {
+      console.warn('Failed to save chat history:', e);
+    }
+
+    // 如果面板打开，实时刷新
+    const panel = document.getElementById('settings-panel');
+    if (panel && panel.classList.contains('open')) {
+      this.refreshChatHistory();
+    }
+
+    console.log('[Chat] 历史记录数:', this.chatHistory.length);
+  }
+
+  /**
+   * 处理音频数据块
+   */
+  async handleAudioChunk(data) {
+    // data.data 是 base64 编码的音频数据
+    const audioData = Buffer.from(data.data, 'base64');
+    
+    // 预缓冲机制: 先积累一定数量的块再开始播放
+    if (this.isPreBuffering) {
+      this.preBufferQueue.push(audioData);
+      
+      if (this.preBufferQueue.length >= this.PRE_BUFFER_SIZE) {
+        console.log(`[Audio] ✅ 预缓冲完成 (${this.PRE_BUFFER_SIZE}块 ≈ ${(this.PRE_BUFFER_SIZE * 21).toFixed(0)}ms)`);
+        this.isPreBuffering = false;
+        
+        // 播放所有预缓冲的块
+        this.preBufferQueue.forEach(chunk => this.playAudioChunk(chunk));
+        this.preBufferQueue = [];
+      }
+    } else {
+      // 正常播放
+      this.playAudioChunk(audioData);
+    }
+  }
+
+  /**
+   * 初始化 AudioContext
+   */
+  initAudioContext() {
+    if (!this.audioContext) {
+      // ⚠️ 必须使用 48kHz 立体声 (匹配 lyria_service.py 输出)
+      this.audioContext = new (window.AudioContext || window.webkitAudioContext)({
+        sampleRate: 48000,  // 官方标准: 48kHz
+        latencyHint: 'playback'  // 优化: 使用 'playback' 而非 'interactive' (更大缓冲,减少卡顿)
+      });
+      
+      // 创建音频分析器
+      this.analyser = this.audioContext.createAnalyser();
+      this.analyser.fftSize = 256;
+      this.analyser.connect(this.audioContext.destination);
+      
+      console.log('[Audio] ✅ Web Audio Context 已初始化 (48kHz Stereo, 优化缓冲)');
+      console.log(`[Audio]    - Sample Rate: ${this.audioContext.sampleRate} Hz`);
+      console.log(`[Audio]    - Latency Hint: playback (减少卡顿)`);
+      console.log(`[Audio]    - Base Latency: ${this.audioContext.baseLatency.toFixed(3)}s`);
+      this.nextStartTime = this.audioContext.currentTime;
+      this.isFirstChunk = true;
+    }
+  }
+
+  /**
+   * 播放音频块 (完整参考 electron-ui 实现)
+   */
+  async playAudioChunk(audioData) {
+    this.initAudioContext();
+    
+    try {
+      // === 官方 PromptDJ 的 decodeAudioData 完整流程 ===
+      // 1. Int16 PCM → Float32
+      // 2. 解交错 (deinterleave) 立体声
+      // 3. copyToChannel 到 AudioBuffer
+      // 4. 精确时间调度播放
+      
+      // 确保 audioData 是 Buffer
+      const buffer = Buffer.isBuffer(audioData) ? audioData : Buffer.from(audioData);
+      
+      // Step 1: 将 Buffer 转换为 Int16Array (16-bit PCM)
+      const int16Array = new Int16Array(
+        buffer.buffer,
+        buffer.byteOffset,
+        buffer.byteLength / 2
+      );
+      
+      // Step 2: 转换为 Float32Array (-1.0 到 1.0) 并解交错立体声
+      // 官方逻辑: audio[i] / 32768.0, 然后解交错为 [L,L,L...] 和 [R,R,R...]
+      const numFrames = int16Array.length / 2;  // 立体声: 2 channels
+      const leftChannel = new Float32Array(numFrames);
+      const rightChannel = new Float32Array(numFrames);
+      
+      for (let i = 0; i < numFrames; i++) {
+        // 解交错: [L0,R0,L1,R1,...] → [L0,L1,...] 和 [R0,R1,...]
+        leftChannel[i] = int16Array[i * 2] / 32768.0;
+        rightChannel[i] = int16Array[i * 2 + 1] / 32768.0;
+      }
+      
+      // Step 3: 创建 AudioBuffer (立体声, 48000Hz)
+      const audioBuffer = this.audioContext.createBuffer(
+        2,       // 2 channels (stereo)
+        numFrames,
+        48000    // 官方标准: 48kHz
+      );
+      
+      // Step 4: copyToChannel (官方 API)
+      audioBuffer.copyToChannel(leftChannel, 0);   // 左声道
+      audioBuffer.copyToChannel(rightChannel, 1);  // 右声道
+      
+      // === 优化: 使用缓冲队列平滑播放 ===
+      const currentTime = this.audioContext.currentTime;
+      
+      // 计算目标播放时间
+      let targetTime;
+      if (this.isFirstChunk) {
+        // 首次播放: 当前时间 + 小缓冲
+        targetTime = currentTime + 0.05;  // 50ms 初始缓冲
+        this.isFirstChunk = false;
+      } else if (this.nextStartTime < currentTime) {
+        // 时间漂移修正: 重新同步,但保持平滑
+        const drift = currentTime - this.nextStartTime;
+        if (drift > 0.5) {
+          // 漂移过大(>500ms),重新同步
+          targetTime = currentTime + 0.1;
+          console.warn(`[Audio] ⚠️ 音频时间重新同步 (漂移: ${drift.toFixed(3)}s)`);
+        } else {
+          // 小漂移,继续使用计划时间(避免卡顿)
+          targetTime = this.nextStartTime;
+        }
+      } else {
+        // 正常情况: 使用计划时间
+        targetTime = this.nextStartTime;
+      }
+      
+      // 创建音频源
+      const source = this.audioContext.createBufferSource();
+      source.buffer = audioBuffer;
+      
+      // 连接到分析器和输出
+      if (this.analyser) {
+        source.connect(this.analyser);
+      } else {
+        source.connect(this.audioContext.destination);
+      }
+      
+      // 在精确时间点播放
+      source.start(targetTime);
+      
+      // 更新下一个块的时间
+      this.nextStartTime = targetTime + audioBuffer.duration;
+      
+      // 调试信息 (减少频率,避免性能影响)
+      if (Math.random() < 0.02) {  // 2% 概率
+        const latency = (this.nextStartTime - currentTime).toFixed(3);
+        const bufferHealth = (this.nextStartTime - currentTime) / audioBuffer.duration;
+        console.log(`[Audio] 🎵 [48kHz] ${numFrames}帧 ${audioBuffer.duration.toFixed(3)}s | 缓冲: ${latency}s (${bufferHealth.toFixed(1)}x)`);
+      }
+      
+    } catch (error) {
+      console.error('[Audio] ❌ 音频播放错误:', error);
+      console.error('[Audio]    - 数据长度:', audioData.byteLength);
+      console.error('[Audio]    - AudioContext 状态:', this.audioContext?.state);
+      
+      // 官方错误处理: 重置状态
+      this.isFirstChunk = true;
+      
+      // 尝试恢复 AudioContext (官方优化)
+      if (this.audioContext && this.audioContext.state === 'suspended') {
+        console.log('[Audio] ⚠️ AudioContext 已暂停, 尝试恢复...');
+        this.audioContext.resume().then(() => {
+          console.log('[Audio] ✅ AudioContext 已恢复');
+        });
+      }
+    }
+  }
+
+  /**
+   * 触发 Live2D 动作
+   */
+  triggerLive2DAction(action) {
+    if (!this.live2dController) return;
+
+    try {
+      const iframe = document.getElementById('live2d-frame');
+      if (iframe && iframe.contentWindow && iframe.contentWindow.live2dController) {
+        const controller = iframe.contentWindow.live2dController;
+        
+        // 使用对话 API（如果可用）
+        if (iframe.contentWindow.say) {
+          iframe.contentWindow.say({
+            id: action.characterId || 'hiyori',
+            text: action.text || '',
+            audioUrl: action.audioUrl,
+            motion: action.motion || '说话',
+            expression: action.expression
+          });
+        } else {
+          // 回退到基础 API
+          controller.act(action.characterId || 'hiyori', action.motion || '说话');
+        }
+      }
+    } catch (error) {
+      console.error('[Live2D] Action trigger failed:', error);
+    }
+  }
+
+  /**
+   * 连接 Lyria 音乐服务
+   */
+  async connectLyria() {
+    console.log('[Lyria] Attempting to connect to music service...');
+    
+    try {
+      // 创建音频元素
+      this.lyriaAudio = document.createElement('audio');
+      this.lyriaAudio.crossOrigin = 'anonymous';
+      this.lyriaAudio.autoplay = false;
+      
+      // 连接到 Lyria 流
+      const lyriaUrl = 'http://localhost:8000/stream';
+      console.log('[Lyria] Stream URL:', lyriaUrl);
+      this.lyriaAudio.src = lyriaUrl;
+      
+      // 创建音频分析器
+      const audioContext = new (window.AudioContext || window.webkitAudioContext)();
+      const source = audioContext.createMediaElementSource(this.lyriaAudio);
+      
+      // 连接到输出
+      source.connect(audioContext.destination);
+      
+      // 创建音频分析器
+      this.audioAnalyzer = new AudioAnalyzer(source);
+      console.log('[Lyria] ✓ AudioAnalyzer created');
+      
+      // 连接到已创建的背景（不要重新创建）
+      if (this.currentBackground && this.audioAnalyzer) {
+        this.currentBackground.setAudioAnalyzer(this.audioAnalyzer);
+        console.log('[Lyria] ✓ Background connected to audio');
+      }
+      
+      // 监听音频事件
+      this.lyriaAudio.addEventListener('canplay', () => {
+        console.log('[Lyria] ✓ Audio stream ready');
+        this.lyriaConnected = true;
+        if (this.topBar) {
+          this.topBar.showMessage('🎵 音乐服务已连接', 2000, 'normal');
+        }
+      });
+      
+      this.lyriaAudio.addEventListener('error', (e) => {
+        console.error('[Lyria] ❌ Audio error:', e);
+        if (this.topBar) {
+          this.topBar.showMessage('❌ 音乐服务连接失败', 3000, 'warning');
+        }
+      });
+      
+      // 启动 Lyria 会话
+      await this.startLyriaSession();
+      
+      // 用户点击后开始播放（浏览器限制）
+      document.addEventListener('click', () => {
+        if (this.lyriaAudio && this.lyriaAudio.paused) {
+          console.log('[Lyria] User clicked, attempting to play...');
+          this.lyriaAudio.play().catch(err => {
+            console.warn('[Lyria] Autoplay blocked:', err);
+          });
+        }
+      }, { once: true });
+      
+      console.log('[Lyria] Connection setup complete');
+    } catch (error) {
+      console.error('[Lyria] ❌ Connection failed:', error);
+      console.error('[Lyria] Stack:', error.stack);
+      
+      if (this.topBar) {
+        this.topBar.showMessage('⚠️ 音乐服务离线，使用静音模式', 3000, 'warning');
+      }
+      
+      // 静音模式：不使用音频分析
+      this.audioAnalyzer = null;
+      if (this.pixiApp) {
+        this.currentBackground = new TetrisNeonBackground();
+        this.currentBackground.init(this.pixiApp, null);
+      }
+    }
+  }
+
+  /**
+   * 启动 Lyria 音乐会话
+   */
+  async startLyriaSession() {
+    try {
+      const response = await fetch('http://localhost:8000/start', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          genre: 'lofi',
+          bpm: 80
+        })
+      });
+      
+      if (response.ok) {
+        console.log('[Lyria] Session started');
+      } else {
+        throw new Error('Failed to start Lyria session');
+      }
+    } catch (error) {
+      console.error('[Lyria] Start session failed:', error);
+    }
+  }
+
+  /**
+   * 处理用户消息
+   */
+  handleUserMessage(message) {
+    console.log('[FlowRadioApp] Enqueue User message:', message);
+
+    // 加入 SC 队列 (带后端发送标志)
+    this.enqueueSuperChat({
+      user: 'User',
+      text: message,
+      price: 0,
+      duration: 5, // 用户消息默认 5秒
+      sendToBackend: true
+    });
+  }
+
+  /**
+   * 发送消息到后端
+   */
+  sendToBackend(text) {
+    if (this.ws && this.ws.readyState === WebSocket.OPEN) {
+      this.ws.send(JSON.stringify({
+        type: 'USER_INPUT',
+        data: { text: text },
+        timestamp: Date.now()
+      }));
+      console.log('[WebSocket] ✅ 发送USER_INPUT到Coze后端:', text);
+    } else {
+      this.topBar.showMessage('❌ 后端未连接', 2000, 'warning');
+    }
+  }
+
+  /**
+   * SC 队列管理
+   */
+  enqueueSuperChat(item) {
+    // 自动计算时长
+    if (!item.duration || item.duration <= 0) {
+      // 价格越高，时间越长 (10s - 300s)
+      item.duration = Math.max(10, Math.min(300, Math.ceil(item.price / 10) * 10));
+    }
+    
+    this.scQueue.push(item);
+    this.processSuperChatQueue();
+  }
+
+  async processSuperChatQueue() {
+    if (this.isProcessingSC || this.scQueue.length === 0) return;
+    
+    this.isProcessingSC = true;
+    const item = this.scQueue.shift();
+    
+    try {
+      console.log('[SC Queue] Processing:', item.text);
+      
+      // 1. 显示 SC UI
+      this._renderSuperChat(item.user, item.text, item.price, item.duration);
+      
+      // 2. 发送到后端 (如果需要)
+      // 注意: 这里发送后，AI 会开始处理。
+      // 由于我们等待了 duration，所以下一条消息会在 duration 之后才发送给 AI。
+      if (item.sendToBackend) {
+        this.sendToBackend(item.text);
+      }
+      
+      // 3. 等待显示结束 (加一点缓冲)
+      await new Promise(resolve => setTimeout(resolve, item.duration * 1000 + 500));
+      
+    } catch (error) {
+      console.error('[SC Queue] Error:', error);
+    } finally {
+      this.isProcessingSC = false;
+      // 处理下一个
+      this.processSuperChatQueue();
+    }
+  }
+
+  /**
+   * 处理窗口大小变化
+   */
+  handleResize(detail) {
+    const { width, height } = detail;
+
+    // 调整 PixiJS
+    if (this.pixiApp) {
+      this.pixiApp.renderer.resize(width, height);
+    }
+
+    // 调整背景
+    if (this.currentBackground) {
+      this.currentBackground.resize(width, height);
+    }
+
+    // 调整 Live2D 区域
+    if (this.live2dLeft) {
+      const leftRegion = this.layoutManager.getRegion('live2dLeft');
+      this.live2dLeft.resize(leftRegion.width, leftRegion.height);
+    }
+
+    if (this.live2dRight) {
+      const rightRegion = this.layoutManager.getRegion('live2dRight');
+      this.live2dRight.resize(rightRegion.width, rightRegion.height);
+    }
+
+    console.log('[FlowRadioApp] Resized:', width, height);
+  }
+
+  /**
+   * 初始化设置面板
+   */
+  initSettingsPanel() {
+    // 全局播放函数 (用于聊天历史重播)
+    window.playHistoryAudio = (url) => {
+      console.log('[Settings] Replaying audio:', url);
+      const audio = new Audio(url);
+      audio.volume = 1.0;
+      audio.play().catch(err => {
+        console.error('[Settings] 播放历史语音失败:', err);
+        if (this.topBar) {
+          this.topBar.showMessage('❌ 播放失败', 2000, 'error');
+        }
+      });
+    };
+
+    // 增强全局toggle函数(已在HTML中预定义)
+    const originalToggle = window.toggleSettings;
+    window.toggleSettings = () => {
+      const panel = document.getElementById('settings-panel');
+      if (!panel) return;
+      
+      panel.classList.toggle('open');
+      
+      // 如果打开面板,刷新聊天历史
+      if (panel.classList.contains('open')) {
+        this.refreshChatHistory();
+      }
+    };
+
+    // 标签页切换
+    const tabButtons = document.querySelectorAll('.tab-btn');
+    const tabPanes = document.querySelectorAll('.tab-pane');
+    
+    tabButtons.forEach(btn => {
+      btn.addEventListener('click', () => {
+        const tabName = btn.dataset.tab;
+        
+        // 更新按钮状态
+        tabButtons.forEach(b => b.classList.remove('active'));
+        btn.classList.add('active');
+        
+        // 更新面板显示
+        tabPanes.forEach(pane => {
+          pane.classList.remove('active');
+          if (pane.id === `tab-${tabName}`) {
+            pane.classList.add('active');
+          }
+        });
+      });
+    });
+
+    // Temperature滑块更新
+    const tempInput = document.querySelector('input[name="temperature"]');
+    const tempValue = document.getElementById('temp-value');
+    if (tempInput && tempValue) {
+      tempInput.addEventListener('input', (e) => {
+        tempValue.textContent = e.target.value;
+      });
+    }
+
+    // Brightness滑块更新
+    const brightnessInput = document.querySelector('input[name="brightness"]');
+    const brightnessValue = document.getElementById('brightness-value');
+    if (brightnessInput && brightnessValue) {
+      brightnessInput.addEventListener('input', (e) => {
+        brightnessValue.textContent = e.target.value;
+      });
+    }
+
+    // Density滑块更新
+    const densityInput = document.querySelector('input[name="density"]');
+    const densityValue = document.getElementById('density-value');
+    if (densityInput && densityValue) {
+      densityInput.addEventListener('input', (e) => {
+        densityValue.textContent = e.target.value;
+      });
+    }
+
+    // 监听 Live2D Panel 切换按钮
+    const togglePanelBtn = document.getElementById('toggle-live2d-panel');
+    if (togglePanelBtn) {
+      togglePanelBtn.addEventListener('click', () => {
+        const iframe = document.getElementById('live2d-frame');
+        if (!iframe || !iframe.contentWindow) {
+          this.topBar.showMessage('❌ Live2D未加载', 2000, 'error');
+          return;
+        }
+
+        // ✅ 使用postMessage通信,状态由iframe内main.js统一管理
+        iframe.contentWindow.postMessage({
+          type: 'toggle-panel'
+        }, '*');
+        
+        console.log('[Settings] 📤 Sent toggle-panel message');
+      });
+    }
+
+    // 监听历史记录筛选
+    const historyFilter = document.getElementById('history-filter');
+    if (historyFilter) {
+      historyFilter.addEventListener('change', () => {
+        this.refreshChatHistory();
+      });
+    }
+
+    // 监听清空历史按钮
+    const clearHistoryBtn = document.getElementById('clear-history-btn');
+    if (clearHistoryBtn) {
+      clearHistoryBtn.addEventListener('click', () => {
+        if (confirm('确定要清空所有聊天记录吗？')) {
+          this.chatHistory = [];
+          localStorage.removeItem('chatHistory');
+          this.refreshChatHistory();
+          this.topBar.showMessage('🗑️ 聊天记录已清空', 2000, 'info');
+        }
+      });
+    }
+
+    // Magenta表单提交
+    const magentaForm = document.getElementById('magenta-form');
+    if (magentaForm) {
+      magentaForm.addEventListener('submit', (e) => {
+        e.preventDefault();
+        const formData = new FormData(magentaForm);
+        
+        // 解析weighted_prompts
+        const promptsText = formData.get('prompts') || '';
+        const weighted_prompts = promptsText.split('\n')
+          .filter(line => line.trim())
+          .map(line => {
+            const parts = line.split('|');
+            return {
+              text: parts[0].trim(),
+              weight: parts[1] ? parseFloat(parts[1].trim()) : 1.0
+            };
+          });
+
+        const params = {
+          music_config: {
+            bpm: parseInt(formData.get('bpm')),
+            brightness: parseFloat(formData.get('brightness')),
+            density: parseFloat(formData.get('density')),
+            guidance: parseInt(formData.get('guidance')),
+            scale: formData.get('scale'),
+            temperature: parseFloat(formData.get('temperature'))
+          },
+          weighted_prompts: weighted_prompts,
+          reasoning: formData.get('reasoning') || ''
+        };
+        
+        console.log('[Settings] Magenta参数:', params);
+        this.topBar.showMessage('🎵 正在生成音乐...', 3000, 'info');
+        
+        // 发送MUSIC_PARAMS消息
+        if (this.ws && this.ws.readyState === WebSocket.OPEN) {
+          this.ws.send(JSON.stringify({
+            type: 'MUSIC_PARAMS',
+            data: params
+          }));
+        } else {
+          this.topBar.showMessage('❌ 未连接到后端', 2000, 'error');
+        }
+      });
+    }
+
+    console.log('[Settings] 设置面板已初始化');
+  }
+
+  /**
+   * 刷新聊天历史显示
+   */
+  refreshChatHistory() {
+    const historyList = document.getElementById('chat-history-list');
+    if (!historyList) {
+      console.warn('[Settings] chat-history-list元素未找到');
+      return;
+    }
+
+    // 确保 chatHistory 是数组
+    if (!Array.isArray(this.chatHistory)) {
+      console.warn('[Settings] chatHistory is not an array, resetting.');
+      this.chatHistory = [];
+    }
+
+    console.log('[Settings] 刷新聊天历史, 总记录数:', this.chatHistory.length);
+
+    // 1. 获取筛选条件
+    const filterSelect = document.getElementById('history-filter');
+    const filterValue = filterSelect ? filterSelect.value : 'all';
+
+    // 2. 预处理数据 (保留原始索引以便删除)
+    let displayItems = this.chatHistory.map((item, index) => ({ ...item, originalIndex: index }));
+
+    // 3. 应用筛选
+    if (filterValue !== 'all') {
+      displayItems = displayItems.filter(item => {
+        if (filterValue === 'SuperChat') {
+          return item.role === 'User' && item.message && item.message.startsWith('[SC ¥');
+        } else if (filterValue === 'User') {
+          return item.role === 'User' && (!item.message || !item.message.startsWith('[SC ¥'));
+        } else {
+          return item.role === filterValue;
+        }
+      });
+    }
+
+    if (displayItems.length === 0) {
+      historyList.innerHTML = '<p style="opacity: 0.5; text-align: center; padding: 20px;">暂无相关记录</p>';
+      return;
+    }
+
+    // 4. 倒序显示(最新的在上面)
+    const html = displayItems.reverse().map(item => {
+      const date = new Date(item.timestamp);
+      const timeStr = `${date.getHours()}:${String(date.getMinutes()).padStart(2, '0')}`;
+      
+      // 根据角色设置样式类
+      let roleClass = '';
+      let roleName = '';
+      
+      if (item.role === 'User') {
+        if (item.message && item.message.startsWith('[SC ¥')) {
+            roleClass = 'user superchat'; // 可以加个特殊样式
+            roleName = '💰 Super Chat';
+        } else {
+            roleClass = 'user';
+            roleName = '👤 用户';
+        }
+      } else if (item.role === 'Mao') {
+        roleClass = 'mao';
+        roleName = '🐱 Mao';
+      } else {
+        roleClass = 'ai';
+        roleName = '🤖 Hiyori';
+      }
+
+      // 简单的 HTML 转义
+      const escapeHtml = (text) => {
+        if (!text) return '';
+        return text
+          .replace(/&/g, "&amp;")
+          .replace(/</g, "&lt;")
+          .replace(/>/g, "&gt;")
+          .replace(/"/g, "&quot;")
+          .replace(/'/g, "&#039;");
+      };
+      
+      const safeMessage = escapeHtml(item.message);
+      const safeUrl = item.audioUrl ? item.audioUrl.replace(/"/g, '&quot;') : '';
+
+      return `
+        <div class="chat-item ${roleClass}">
+          <div class="chat-item-header">
+            <span>${roleName} ${timeStr}</span>
+            <button class="delete-msg-btn" data-index="${item.originalIndex}" style="background:none; border:none; color:rgba(255,255,255,0.3); cursor:pointer; font-size:14px; padding:0 5px;">✕</button>
+          </div>
+          <div class="chat-item-message">${safeMessage}</div>
+          ${item.audioUrl ? `
+            <div class="chat-item-audio">
+              <button onclick="window.playHistoryAudio('${safeUrl}')">▶️ 播放语音</button>
+            </div>
+          ` : ''}
+        </div>
+      `;
+    }).join('');
+
+    historyList.innerHTML = html;
+
+    // 5. 绑定删除按钮事件
+    historyList.querySelectorAll('.delete-msg-btn').forEach(btn => {
+      btn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        const index = parseInt(e.target.dataset.index);
+        this.deleteChatItem(index);
+      });
+    });
+    
+    console.log('[Settings] ✅ 聊天历史已更新 (带筛选)');
+  }
+
+  /**
+   * 删除单条聊天记录
+   */
+  deleteChatItem(index) {
+    if (index >= 0 && index < this.chatHistory.length) {
+      this.chatHistory.splice(index, 1);
+      localStorage.setItem('chatHistory', JSON.stringify(this.chatHistory));
+      this.refreshChatHistory();
+    }
+  }
+
+  /**
+   * 添加 Super Chat (公共接口，加入队列)
+   */
+  addSuperChat(user, text, price, duration = 0) {
+    // 默认开启发送到后端 (除非明确不需要，比如历史回放)
+    // 这样用户在控制台测试时也能触发 Coze
+    this.enqueueSuperChat({
+      user,
+      text,
+      price,
+      duration,
+      sendToBackend: true 
+    });
+  }
+
+  /**
+   * 渲染 Super Chat UI (内部调用)
+   */
+  _renderSuperChat(user, text, price, duration) {
+    const scContainer = document.getElementById('superChatContainer');
+    if (!scContainer) return;
+    
+    const card = document.createElement('div');
+    card.className = 'sc-card';
+    
+    // 根据金额改变颜色 (仿 YouTube 风格)
+    let bgColor = 'linear-gradient(90deg, #1565c0, #1e88e5)'; // 蓝色 (低)
+    if (price >= 30) bgColor = 'linear-gradient(90deg, #00b8d4, #00e5ff)'; // 青色
+    if (price >= 50) bgColor = 'linear-gradient(90deg, #ffb300, #ffca28)'; // 黄色
+    if (price >= 100) bgColor = 'linear-gradient(90deg, #e65100, #f57c00)'; // 橙色
+    if (price >= 500) bgColor = 'linear-gradient(90deg, #c2185b, #e91e63)'; // 品红
+    if (price >= 1000) bgColor = 'linear-gradient(90deg, #d50000, #ff1744)'; // 红色 (高)
+    
+    card.style.background = bgColor;
+    
+    card.innerHTML = `
+      <div class="sc-header">
+        <span class="sc-user">${user}</span>
+        <span class="sc-price">¥${price}</span>
+      </div>
+      <div class="sc-content">${text}</div>
+      <div class="sc-progress-bar">
+        <div class="sc-progress-fill" style="animation: progress ${duration}s linear forwards;"></div>
+      </div>
+      <style>
+        @keyframes progress {
+          from { width: 100%; }
+          to { width: 0%; }
+        }
+      </style>
+    `;
+    
+    scContainer.appendChild(card);
+    
+    // 自动移除
+    setTimeout(() => {
+      card.style.opacity = '0';
+      card.style.transform = 'translateY(-20px)';
+      setTimeout(() => card.remove(), 300); // 等待动画结束
+    }, duration * 1000);
+    
+    // 同时发送到聊天历史
+    this.saveChatHistory('User', `[SC ¥${price}] ${user}: ${text}`);
+    this.topBar.showMessage(`💰 SC: ${user} ¥${price}`, 5000, 'superchat');
+  }
+
+  /**
+   * 添加弹幕
+   */
+  addDanmaku(text, color = '#fff', user = '') {
+    const danmakuContainer = document.getElementById('danmakuContainer');
+    if (!danmakuContainer) return;
+
+    const danmaku = document.createElement('div');
+    danmaku.className = 'danmaku-item';
+    danmaku.textContent = text;
+    danmaku.style.color = color;
+    
+    // 随机轨道逻辑 (0-5)
+    const trackIndex = Math.floor(Math.random() * 6);
+    const top = trackIndex * 50 + 80; // 80px起始高度,避开顶部
+    danmaku.style.top = `${top}px`;
+    danmaku.style.right = '-100px'; // 从右侧开始
+    
+    // 动画时长 (随机 8-12s)
+    const duration = 8 + Math.random() * 4;
+    danmaku.style.transition = `transform ${duration}s linear`;
+    
+    danmakuContainer.appendChild(danmaku);
+    
+    // 触发动画
+    requestAnimationFrame(() => {
+      // 移动到左侧屏幕外
+      danmaku.style.transform = `translateX(-${window.innerWidth + 500}px)`; 
+    });
+    
+    // 动画结束后移除
+    setTimeout(() => {
+      danmaku.remove();
+    }, duration * 1000);
+  }
+
+  /**
+   * 销毁应用
+   */
+  destroy() {
+    // 关闭 WebSocket
+    if (this.ws) {
+      this.ws.close();
+      this.ws = null;
+    }
+    
+    if (this.wsReconnectTimer) {
+      clearTimeout(this.wsReconnectTimer);
+    }
+    
+    // 停止音频
+    if (this.lyriaAudio) {
+      this.lyriaAudio.pause();
+      this.lyriaAudio.src = '';
+      this.lyriaAudio = null;
+    }
+    
+    if (this.currentBackground) {
+      this.currentBackground.destroy();
+    }
+
+    if (this.pixiApp) {
+      this.pixiApp.destroy(true);
+    }
+
+    if (this.audioAnalyzer) {
+      this.audioAnalyzer.destroy();
+    }
+
+    if (this.topBar) {
+      this.topBar.destroy();
+    }
+
+    if (this.bottomInput) {
+      this.bottomInput.destroy();
+    }
+
+    if (this.layoutManager) {
+      this.layoutManager.destroy();
+    }
+  }
+}
+
+// 页面加载后初始化
+console.log('[Renderer] Module loaded, waiting for DOMContentLoaded...');
+
+window.addEventListener('DOMContentLoaded', async () => {
+  console.log('[Renderer] ========== DOMContentLoaded EVENT ==========');
+  console.log('[Renderer] Creating FlowRadioApp instance...');
+  
+  try {
+    const app = new FlowRadioApp();
+    console.log('[Renderer] ✓ FlowRadioApp instance created');
+    
+    console.log('[Renderer] Calling app.init()...');
+    await app.init();
+    console.log('[Renderer] ✓ app.init() completed');
+
+    // 全局暴露（方便调试）
+    window.flowRadioApp = app;
+    
+    // 挂载全局接口
+    window.addSuperChat = (user, text, price, duration) => app.addSuperChat(user, text, price, duration);
+    window.addDanmaku = (text, color, user) => app.addDanmaku(text, color, user);
+    
+    // 修复: 确保 addSuperChat 在控制台可用
+    // 有时候 window.addSuperChat 会被覆盖或未及时挂载
+    Object.defineProperty(window, 'addSuperChat', {
+      value: (user, text, price, duration) => app.addSuperChat(user, text, price, duration),
+      writable: true,
+      configurable: true
+    });
+
+    console.log('[Renderer] ✓ App exposed to window.flowRadioApp');
+    console.log('[Renderer] ========== READY ==========');
+  } catch (error) {
+    console.error('[Renderer] ❌❌❌ FATAL ERROR ❌❌❌');
+    console.error('[Renderer] Error:', error);
+    console.error('[Renderer] Stack:', error.stack);
+    
+    // 显示错误到页面
+    document.body.innerHTML += `
+      <div style="position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%);
+                  background: rgba(255,0,0,0.9); color: white; padding: 30px; border-radius: 15px;
+                  z-index: 99999; max-width: 80%; font-family: monospace;">
+        <h2>❌ FlowRadio 启动失败</h2>
+        <p><strong>错误：</strong> ${error.message}</p>
+        <pre style="background: rgba(0,0,0,0.5); padding: 15px; border-radius: 5px; 
+                    overflow: auto; max-height: 300px; font-size: 12px;">
+${error.stack}
+        </pre>
+        <p><small>请按 F12 打开 DevTools 查看完整日志</small></p>
+      </div>
+    `;
+  }
+});
+
+console.log('[Renderer] DOMContentLoaded listener registered');

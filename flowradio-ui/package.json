@@ -1,0 +1,28 @@
+{
+  "name": "flowradio-ui",
+  "version": "1.0.0",
+  "description": "FlowRadio AI DJ UI Framework with Live2D and Dynamic Backgrounds",
+  "main": "src/main.js",
+  "scripts": {
+    "start": "electron .",
+    "test": "electron src/main-test.js",
+    "dev": "electron . --dev",
+    "verify": "node verify.js",
+    "prestart": "node verify.js"
+  },
+  "keywords": [
+    "electron",
+    "pixi.js",
+    "live2d",
+    "flowradio"
+  ],
+  "author": "FlowRadio Team",
+  "license": "MIT",
+  "devDependencies": {
+    "electron": "^28.0.0"
+  },
+  "dependencies": {
+    "@pixi/unsafe-eval": "^7.4.3",
+    "pixi.js": "^6.5.10"
+  }
+}

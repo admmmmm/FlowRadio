@@ -1,0 +1,107 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>FlowRadio UI - Test</title>
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+    html, body {
+      width: 100%;
+      height: 100%;
+      overflow: hidden;
+      background: #000000;
+      font-family: Arial, sans-serif;
+    }
+    #status {
+      position: absolute;
+      top: 20px;
+      left: 20px;
+      color: #00ff00;
+      font-size: 18px;
+      z-index: 1000;
+      background: rgba(0,0,0,0.7);
+      padding: 20px;
+      border-radius: 10px;
+    }
+    #app-container {
+      width: 100%;
+      height: 100%;
+      position: relative;
+    }
+    canvas {
+      display: block;
+    }
+  </style>
+</head>
+<body>
+  <div id="status">
+    <div>🔍 FlowRadio UI 测试版</div>
+    <div id="log"></div>
+  </div>
+  
+  <div id="app-container"></div>
+
+  <script src="../node_modules/pixi.js/dist/pixi.min.js"></script>
+  <script>
+    const log = document.getElementById('log');
+    function addLog(msg) {
+      console.log(msg);
+      log.innerHTML += '<br>' + msg;
+    }
+
+    try {
+      addLog('✅ PixiJS version: ' + PIXI.VERSION);
+      
+      // 创建应用
+      const app = new PIXI.Application({
+        width: window.innerWidth,
+        height: window.innerHeight,
+        backgroundColor: 0x1a1a2e,
+        resizeTo: window
+      });
+      document.getElementById('app-container').appendChild(app.view);
+      addLog('✅ PIXI Application created');
+
+      // 添加测试图形
+      const graphics = new PIXI.Graphics();
+      graphics.beginFill(0x00ff00);
+      graphics.drawRect(100, 100, 200, 100);
+      graphics.endFill();
+      app.stage.addChild(graphics);
+      addLog('✅ Test rectangle added');
+
+      // 添加文本
+      const text = new PIXI.Text('FlowRadio UI is Working!', {
+        fontFamily: 'Arial',
+        fontSize: 48,
+        fill: 0xffffff,
+        align: 'center'
+      });
+      text.anchor.set(0.5);
+      text.x = window.innerWidth / 2;
+      text.y = window.innerHeight / 2;
+      app.stage.addChild(text);
+      addLog('✅ Text added');
+
+      // 动画测试
+      let rotation = 0;
+      app.ticker.add(() => {
+        rotation += 0.01;
+        text.rotation = Math.sin(rotation) * 0.1;
+      });
+      addLog('✅ Animation started');
+
+      addLog('🎉 All tests passed!');
+      
+    } catch (error) {
+      addLog('❌ Error: ' + error.message);
+      console.error(error);
+    }
+  </script>
+</body>
+</html>

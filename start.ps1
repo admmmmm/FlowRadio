@@ -24,6 +24,21 @@ if (Test-Path $envFile) {
     Write-Host ""
 }
 
+# Map .env variables to Go backend expected names
+if ($env:COZE_MAIN_WORKFLOW_ID) {
+    $env:MAIN_WORKFLOW_ID = $env:COZE_MAIN_WORKFLOW_ID
+}
+if ($env:COZE_COMMENT_REPLY_WORKFLOW_ID) {
+    $env:COMMENT_WORKFLOW_ID = $env:COZE_COMMENT_REPLY_WORKFLOW_ID
+}
+# Set default APP_IDs if not provided
+if (-not $env:MAIN_APP_ID) {
+    $env:MAIN_APP_ID = "default"
+}
+if (-not $env:COMMENT_APP_ID) {
+    $env:COMMENT_APP_ID = "default"
+}
+
 # Check environment variables
 Write-Host "Checking environment variables..." -ForegroundColor Yellow
 
@@ -70,22 +85,32 @@ Write-Host "OK Environment check passed" -ForegroundColor Green
 Write-Host ""
 
 # 1. Start Lyria Service
-Write-Host "Step 1/3: Starting Lyria Music Service..." -ForegroundColor Yellow
+Write-Host "Step 1/4: Starting Lyria Music Service..." -ForegroundColor Yellow
 Start-Process powershell -ArgumentList "-NoExit", "-Command", "cd '$PSScriptRoot'; python lyria_service.py"
 Start-Sleep -Seconds 2
 
-# 2. Start Go Backend (开发模式 - 使用 go run 确保代码修改立即生效)
-Write-Host "Step 2/3: Starting Go WebSocket Backend..." -ForegroundColor Yellow
-Write-Host "  Development mode: Using 'go run .' for instant code updates" -ForegroundColor Cyan
+# 2. Start Go Backend
+Write-Host "Step 2/4: Starting Go WebSocket Backend..." -ForegroundColor Yellow
+Write-Host "  Using compiled binary: flowradio-ws.exe" -ForegroundColor Cyan
 
-# 开发模式：直接使用 go run，确保每次代码修改都生效
-# 不使用编译好的 .exe，避免运行旧代码
-Start-Process powershell -ArgumentList "-NoExit", "-Command", "cd '$PSScriptRoot\backend'; go run ."
+Start-Process powershell -ArgumentList "-NoExit", "-Command", "cd '$PSScriptRoot\backend'; `
+`$env:GEMINI_API_KEY='$env:GEMINI_API_KEY'; `
+`$env:COZE_API_TOKEN='$env:COZE_API_TOKEN'; `
+`$env:VOLCANO_API_KEY='$env:VOLCANO_API_KEY'; `
+`$env:MAIN_WORKFLOW_ID='$env:MAIN_WORKFLOW_ID'; `
+`$env:MAIN_APP_ID='$env:MAIN_APP_ID'; `
+`$env:COMMENT_WORKFLOW_ID='$env:COMMENT_WORKFLOW_ID'; `
+`$env:COMMENT_APP_ID='$env:COMMENT_APP_ID'; .\flowradio-ws.exe"
 Start-Sleep -Seconds 3
 
-# 3. Start Electron UI
-Write-Host "Step 3/3: Starting Electron UI..." -ForegroundColor Yellow
-cd "$PSScriptRoot\electron-ui"
+# 3. Start Live2D Service
+Write-Host "Step 3/4: Starting Live2D Service..." -ForegroundColor Yellow
+Start-Process powershell -ArgumentList "-NoExit", "-Command", "cd '$PSScriptRoot\live2d'; npm run dev"
+Start-Sleep -Seconds 3
+
+# 4. Start FlowRadio UI (Electron)
+Write-Host "Step 4/4: Starting FlowRadio UI..." -ForegroundColor Yellow
+cd "$PSScriptRoot\flowradio-ui"
 
 # Check if dependencies are installed
 if (-Not (Test-Path "node_modules")) {
@@ -101,8 +126,9 @@ Write-Host ""
 Write-Host "Services running on:" -ForegroundColor Yellow
 Write-Host "  - Lyria Service: http://localhost:8000" -ForegroundColor White
 Write-Host "  - Go Backend: ws://localhost:8080/ws" -ForegroundColor White
-Write-Host "  - Electron UI: launching..." -ForegroundColor White
+Write-Host "  - Live2D Service: http://localhost:5173" -ForegroundColor White
+Write-Host "  - FlowRadio UI: launching..." -ForegroundColor White
 Write-Host ""
 
-Set-Location "$PSScriptRoot\electron-ui"
-npm start
+Set-Location "$PSScriptRoot\flowradio-ui"
+npm run dev

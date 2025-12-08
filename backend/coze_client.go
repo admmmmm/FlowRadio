@@ -71,11 +71,12 @@ type HostOutput struct {
 
 // MainWorkflowResult Main工作流结果
 type MainWorkflowResult struct {
-	MusicParams  *MusicParams `json:"music_params"`
-	HostScript   string       `json:"host_script"`
-	HostTTSURL   string       `json:"host_tts_url"`
-	Comments     []string     `json:"comments"`
-	Reply        string       `json:"reply"`
+	MusicParams   *MusicParams `json:"music_params"`
+	HostScript    string       `json:"host_script"`
+	HostTTSURL    string       `json:"host_tts_url"`
+	RawHostOutput *HostOutput  `json:"raw_host_output"` // 新增
+	Comments      []string     `json:"comments"`
+	Reply         string       `json:"reply"`
 }
 
 // CommentReplyResult Comment Reply工作流结果
@@ -90,18 +91,22 @@ type CommentReplyResult struct {
 
 // IntegrationResult 完整集成结果
 type IntegrationResult struct {
-	MusicParams  *MusicParams        `json:"music_params"`
-	HostScript   string              `json:"host_script"`
-	HostTTSURL   string              `json:"host_tts_url"`
-	Atmosphere   *AtmosphereResult   `json:"atmosphere,omitempty"`
+	MusicParams   *MusicParams        `json:"music_params"`
+	HostScript    string              `json:"host_script"`
+	HostTTSURL    string              `json:"host_tts_url"`
+	RawHostOutput *HostOutput         `json:"raw_host_output,omitempty"` // 新增: 原始主持人输出
+	Atmosphere    *AtmosphereResult   `json:"atmosphere,omitempty"`
 }
 
 // AtmosphereResult 气氛组结果
 type AtmosphereResult struct {
-	Comments    []string `json:"comments"`
-	LongComment string   `json:"long_comment"`
-	Reply       string   `json:"reply"`
-	TTSURL      string   `json:"tts_url"`
+	Comments       []string `json:"comments"`
+	LongComment    string   `json:"long_comment"`
+	Reply          string   `json:"reply"`
+	TTSURL         string   `json:"tts_url"`
+	Replies        []string `json:"replies"`          // 新增: 完整回复列表
+	SelectedReply  string   `json:"selected_reply"`   // 新增: 选中的回复
+	SelectedTTSURL string   `json:"selected_tts_url"` // 新增: 选中的TTS
 }
 
 const (
@@ -174,6 +179,7 @@ func (c *CozeWorkflowClient) CallMainWorkflow(textInput, processInput string) (*
 			if err := json.Unmarshal([]byte(node.Content), &hostOutput); err == nil {
 				result.HostScript = hostOutput.Host1
 				result.HostTTSURL = hostOutput.TTS
+				result.RawHostOutput = &hostOutput // 保存原始数据
 			}
 		case strings.Contains(node.NodeTitle, "评论"):
 			var comments map[string]string
@@ -280,9 +286,10 @@ func (c *CozeWorkflowClient) GenerateMusicAndAtmosphere(userInput, context strin
 
 	// 构建基础返回结果
 	result := &IntegrationResult{
-		MusicParams: mainResult.MusicParams,
-		HostScript:  mainResult.HostScript,
-		HostTTSURL:  mainResult.HostTTSURL,
+		MusicParams:   mainResult.MusicParams,
+		HostScript:    mainResult.HostScript,
+		HostTTSURL:    mainResult.HostTTSURL,
+		RawHostOutput: mainResult.RawHostOutput,
 	}
 
 	// Step 2: 如果启用气氛组,调用Comment Reply工作流
@@ -296,10 +303,13 @@ func (c *CozeWorkflowClient) GenerateMusicAndAtmosphere(userInput, context strin
 			fmt.Printf("%s\n", string(atmosphereJSON))
 
 			result.Atmosphere = &AtmosphereResult{
-				Comments:    atmosphereResult.Comments,
-				LongComment: atmosphereResult.LongComment,
-				Reply:       atmosphereResult.SelectedReply,
-				TTSURL:      atmosphereResult.SelectedTTSURL,
+				Comments:       atmosphereResult.Comments,
+				LongComment:    atmosphereResult.LongComment,
+				Reply:          atmosphereResult.SelectedReply,
+				TTSURL:         atmosphereResult.SelectedTTSURL,
+				Replies:        atmosphereResult.Replies,
+				SelectedReply:  atmosphereResult.SelectedReply,
+				SelectedTTSURL: atmosphereResult.SelectedTTSURL,
 			}
 		}
 	}

@@ -46,9 +46,41 @@ const sendManualParams = document.getElementById('sendManualParams');
 // 存储最后发送的参数
 let lastMusicParams = null;
 
-// ============ Lyria 调试面板 ============
-openSettingsBtn.addEventListener('click', () => {
+// ============ 背景管理器（占位符）============
+let backgroundManager = null;
+
+// ============ 设置菜单逻辑 ============
+const settingsMenu = document.getElementById('settingsMenu');
+const menuLyria = document.getElementById('menuLyria');
+const menuBackground = document.getElementById('menuBackground');
+const menuAbout = document.getElementById('menuAbout');
+
+// 切换菜单显示
+openSettingsBtn.addEventListener('click', (e) => {
+  e.stopPropagation();
+  const isVisible = settingsMenu.style.display === 'block';
+  settingsMenu.style.display = isVisible ? 'none' : 'block';
+});
+
+// 点击其他地方关闭菜单
+document.addEventListener('click', () => {
+  settingsMenu.style.display = 'none';
+});
+
+// 菜单项点击事件
+menuLyria.addEventListener('click', () => {
   lyriaPanel.style.display = 'flex';
+});
+
+menuBackground.addEventListener('click', () => {
+  // 简单的背景切换逻辑
+  document.body.style.backgroundColor = 
+    document.body.style.backgroundColor === 'rgb(30, 30, 30)' ? '#000' : '#1e1e1e';
+  addSystemMessage('🖼️ 背景已切换');
+});
+
+menuAbout.addEventListener('click', () => {
+  alert('FlowRadio v1.0\nAI DJ & Music Generator\nPowered by Gemini & Coze');
 });
 
 closeLyriaBtn.addEventListener('click', () => {
@@ -294,16 +326,45 @@ function handleAtmosphere(data) {
       // 添加随机性: 基础延迟 + 2-5秒随机间隔
       const randomDelay = baseDelay + idx * (2000 + Math.random() * 3000);
       setTimeout(() => {
-        addAtmosphereComment(comment);
+        // 随机生成用户名
+        const randomUser = `User${Math.floor(Math.random() * 1000)}`;
+        // 发送弹幕
+        window.addDanmaku(comment, '#fff', randomUser);
       }, randomDelay);
     });
   }
   
   // 显示主持人回复 (在评论之后)
   if (reply) {
-    const replyDelay = baseDelay + numToShow * 3500 + Math.random() * 2000;
+    // 解析回复 JSON
+    let replyText = reply;
+    let replyAudio = tts_url;
+    
+    try {
+      // 尝试解析 JSON 格式的回复
+      // 格式: {"r1": "...", "r2": "...", "link1": "..."}
+      if (reply.trim().startsWith('{')) {
+        const replyObj = JSON.parse(reply);
+        // 随机选一条回复文本
+        const replyKeys = Object.keys(replyObj).filter(k => k.startsWith('r'));
+        if (replyKeys.length > 0) {
+          const randomKey = replyKeys[Math.floor(Math.random() * replyKeys.length)];
+          replyText = replyObj[randomKey];
+          
+          // 尝试找对应的语音链接 (link1 对应 r1)
+          const linkKey = randomKey.replace('r', 'link');
+          if (replyObj[linkKey]) {
+            replyAudio = replyObj[linkKey];
+          }
+        }
+      }
+    } catch (e) {
+      console.warn('解析回复JSON失败,使用原始文本:', e);
+    }
+
+    const replyDelay = baseDelay + (comments ? comments.length : 0) * 3500 + Math.random() * 2000;
     setTimeout(() => {
-      addAtmosphereReply(reply, tts_url);
+      addAtmosphereReply(replyText, replyAudio);
     }, replyDelay);
   }
 }
@@ -315,16 +376,6 @@ function handleLLMToLyria(data) {
   // 更新调试面板
   if (lastSentParams && data.params) {
     lastSentParams.textContent = JSON.stringify(data.params, null, 2);
-  }
-}
-
-function handleLyriaResponse(data) {
-  console.log('📥 收到 Lyria 响应:', data);
-  
-  if (data.success) {
-    lyriaResponse.textContent = '✅ 成功!\n\n' + JSON.stringify(data.response, null, 2);
-  } else {
-    lyriaResponse.textContent = '❌ 失败!\n\n错误: ' + data.error;
   }
 }
 
@@ -352,6 +403,9 @@ function handleAudioChunk(data) {
 
 // ============ Web Audio API 播放 (官方优化版) ============
 // 参考官方 PromptDJ 的 decodeAudioData 逻辑
+let analyser = null; // 音频分析器
+let musicIntensityInterval = null; // 音乐强度分析定时器
+
 function initAudioContext() {
   if (!audioContext) {
     // ⚠️ 必须使用 48kHz 立体声 (匹配 lyria_service.py 输出)
@@ -359,13 +413,47 @@ function initAudioContext() {
       sampleRate: 48000,  // 官方标准: 48kHz
       latencyHint: 'playback'  // 优化: 使用 'playback' 而非 'interactive' (更大缓冲,减少卡顿)
     });
+    
+    // 创建音频分析器
+    analyser = audioContext.createAnalyser();
+    analyser.fftSize = 256;
+    analyser.connect(audioContext.destination);
+    
     console.log('✅ Web Audio Context 已初始化 (48kHz Stereo, 优化缓冲)');
     console.log(`   - Sample Rate: ${audioContext.sampleRate} Hz`);
     console.log(`   - Latency Hint: playback (减少卡顿)`);
     console.log(`   - Base Latency: ${audioContext.baseLatency.toFixed(3)}s`);
     nextStartTime = audioContext.currentTime;
     isFirstChunk = true;
+    
+    // 启动音乐强度分析
+    startMusicIntensityAnalysis();
   }
+}
+
+// 启动音乐强度分析
+function startMusicIntensityAnalysis() {
+  if (musicIntensityInterval) {
+    clearInterval(musicIntensityInterval);
+  }
+  
+  // 将analyser暴露为全局变量供背景使用
+  window.analyser = analyser;
+  
+  const dataArray = new Uint8Array(analyser.frequencyBinCount);
+  
+  musicIntensityInterval = setInterval(() => {
+    if (!analyser || !backgroundManager) return;
+    
+    analyser.getByteFrequencyData(dataArray);
+    
+    // 计算音频强度 (0-1)
+    const average = dataArray.reduce((a, b) => a + b, 0) / dataArray.length;
+    const intensity = average / 255;
+    
+    // 更新背景动画（背景内部会自己分析）
+    backgroundManager.updateWithMusic(intensity);
+  }, 50); // 每50ms更新一次
 }
 
 async function playAudioChunk(audioData) {
@@ -439,7 +527,13 @@ async function playAudioChunk(audioData) {
     // 创建音频源
     const source = audioContext.createBufferSource();
     source.buffer = audioBuffer;
-    source.connect(audioContext.destination);
+    
+    // 连接到分析器和输出
+    if (analyser) {
+      source.connect(analyser);
+    } else {
+      source.connect(audioContext.destination);
+    }
     
     // 在精确时间点播放
     source.start(targetTime);
@@ -492,7 +586,7 @@ function updateConnectionStatus(connected) {
 
 function addUserMessage(text) {
   // 发送弹幕
-  sendDanmaku(text, 'user');
+  window.addDanmaku(text, '#a0c4ff', 'User');
   
   const messageDiv = document.createElement('div');
   messageDiv.className = 'message user';
@@ -503,7 +597,8 @@ function addUserMessage(text) {
 
 function addDJMessage(text, ttsUrl = null) {
   // 发送弹幕
-  sendDanmaku(text, 'dj');
+  window.addDanmaku(text, '#ff99cc', 'Mao');
+
   
   const messageDiv = document.createElement('div');
   messageDiv.className = 'message dj';
@@ -534,35 +629,18 @@ function scrollToBottom() {
   chatContainer.scrollTop = chatContainer.scrollHeight;
 }
 
-// 添加气氛组评论
+// 添加气氛组评论 (只发弹幕,不进聊天记录)
 function addAtmosphereComment(text) {
+  // 随机生成用户名
+  const randomUser = `User${Math.floor(Math.random() * 1000)}`;
   // 发送弹幕
-  sendDanmaku(text, 'atmosphere');
-  
-  const messageDiv = document.createElement('div');
-  messageDiv.className = 'message atmosphere-comment';
-  
-  const icon = document.createElement('span');
-  icon.className = 'atmosphere-icon';
-  icon.textContent = '🎵';
-  
-  const content = document.createElement('span');
-  content.textContent = text;
-  
-  messageDiv.appendChild(icon);
-  messageDiv.appendChild(content);
-  chatContainer.appendChild(messageDiv);
-  
-  // 添加淡入动画
-  messageDiv.style.animation = 'fadeInUp 0.5s ease-out';
-  
-  scrollToBottom();
+  window.addDanmaku(text, '#fff', randomUser);
 }
 
-// 添加气氛组回复
+// 添加气氛组回复 (进聊天记录)
 function addAtmosphereReply(text, ttsUrl = null) {
   // 发送弹幕
-  sendDanmaku(text, 'reply');
+  window.addDanmaku(text, '#ffcc80', 'Mao');
   
   const messageDiv = document.createElement('div');
   messageDiv.className = 'message atmosphere-reply';
@@ -598,42 +676,24 @@ function addAtmosphereReply(text, ttsUrl = null) {
   scrollToBottom();
 }
 
-// ============ 弹幕系统 ============
+// ============ 弹幕系统 (内部实现) ============
 function sendDanmaku(text, type = 'user') {
-  const danmaku = document.createElement('div');
-  danmaku.className = `danmaku-item danmaku-${type}`;
-  danmaku.textContent = text;
+  // 兼容旧代码调用,转接到新接口
+  let color = '#fff';
+  let user = 'User';
   
-  // 选择可用轨道 (避免碰撞)
-  const now = Date.now();
-  let trackIndex = 0;
-  let minEndTime = Infinity;
-  
-  for (let i = 0; i < danmakuTracks.length; i++) {
-    if (danmakuTracks[i] < now) {
-      trackIndex = i;
-      break;
-    }
-    if (danmakuTracks[i] < minEndTime) {
-      minEndTime = danmakuTracks[i];
-      trackIndex = i;
-    }
+  if (type === 'dj' || type === 'reply') {
+    color = '#ff99cc';
+    user = 'Mao';
+  } else if (type === 'atmosphere') {
+    color = '#fff';
+    user = `User${Math.floor(Math.random() * 1000)}`;
+  } else if (type === 'user') {
+    color = '#a0c4ff';
+    user = 'Me';
   }
   
-  // 设置轨道位置
-  const topPosition = 30 + trackIndex * TRACK_HEIGHT;
-  danmaku.style.top = `${topPosition}px`;
-  
-  // 更新轨道占用时间 (12秒动画 + 1秒缓冲)
-  danmakuTracks[trackIndex] = now + 13000;
-  
-  // 添加到容器
-  danmakuContainer.appendChild(danmaku);
-  
-  // 动画结束后移除
-  setTimeout(() => {
-    danmaku.remove();
-  }, 12000);
+  window.addDanmaku(text, color, user);
 }
 
 // 工具函数: 数组随机打乱
@@ -697,6 +757,102 @@ reconnectBtn.addEventListener('click', () => {
   manualReconnect();
 });
 
+// ============ 弹幕 & Super Chat 接口 ============
+
+/**
+ * 添加弹幕 (暴露给外部调用)
+ * @param {string} text 弹幕内容
+ * @param {string} color 弹幕颜色 (可选)
+ * @param {string} user 用户名 (可选)
+ */
+window.addDanmaku = function(text, color = '#fff', user = '') {
+  const danmaku = document.createElement('div');
+  danmaku.className = 'danmaku-item';
+  danmaku.textContent = text;
+  danmaku.style.color = color;
+  
+  // 随机轨道逻辑 (0-5)
+  const trackIndex = Math.floor(Math.random() * 6);
+  const top = trackIndex * 50 + 80; // 80px起始高度,避开顶部
+  danmaku.style.top = `${top}px`;
+  danmaku.style.position = 'fixed';
+  danmaku.style.right = '-100px'; // 从右侧开始 (稍微靠外一点)
+  danmaku.style.whiteSpace = 'nowrap';
+  danmaku.style.fontSize = '24px';
+  danmaku.style.fontWeight = 'bold';
+  danmaku.style.textShadow = '2px 2px 4px rgba(0,0,0,0.8)';
+  danmaku.style.zIndex = '100';
+  danmaku.style.pointerEvents = 'none';
+  danmaku.style.fontFamily = '"Microsoft YaHei", sans-serif';
+  danmaku.style.animation = 'none'; // 禁用 CSS 动画，使用 JS 控制
+  
+  // 动画时长 (随机 8-12s)
+  const duration = 8 + Math.random() * 4;
+  danmaku.style.transition = `transform ${duration}s linear`;
+  
+  danmakuContainer.appendChild(danmaku);
+  
+  // 触发动画
+  requestAnimationFrame(() => {
+    // 移动到左侧屏幕外 (屏幕宽度 + 自身宽度估计)
+    danmaku.style.transform = `translateX(-${window.innerWidth + 500}px)`; 
+  });
+  
+  // 动画结束后移除
+  setTimeout(() => {
+    danmaku.remove();
+  }, duration * 1000);
+};
+
+/**
+ * 添加 Super Chat (暴露给外部调用)
+ * @param {string} user 用户名
+ * @param {string} text 内容
+ * @param {number} price 金额 (CNY)
+ * @param {number} duration 持续时间(秒), 默认根据金额计算
+ */
+window.addSuperChat = function(user, text, price, duration = 0) {
+  const scContainer = document.getElementById('superChatContainer');
+  
+  // 如果没有指定时长，根据金额计算: 每10元增加10秒，最少10秒，最多300秒
+  if (duration <= 0) {
+    duration = Math.max(10, Math.min(300, Math.ceil(price / 10) * 10));
+  }
+  
+  const card = document.createElement('div');
+  card.className = 'sc-card';
+  
+  // 根据金额改变颜色 (仿 YouTube 风格)
+  let bgColor = 'linear-gradient(90deg, #1565c0, #1e88e5)'; // 蓝色 (低)
+  if (price >= 30) bgColor = 'linear-gradient(90deg, #00b8d4, #00e5ff)'; // 青色
+  if (price >= 50) bgColor = 'linear-gradient(90deg, #ffb300, #ffca28)'; // 黄色
+  if (price >= 100) bgColor = 'linear-gradient(90deg, #e65100, #f57c00)'; // 橙色
+  if (price >= 500) bgColor = 'linear-gradient(90deg, #c2185b, #e91e63)'; // 品红
+  if (price >= 1000) bgColor = 'linear-gradient(90deg, #d50000, #ff1744)'; // 红色 (高)
+  
+  card.style.background = bgColor;
+  
+  card.innerHTML = `
+    <div class="sc-header">
+      <span class="sc-user">${user}</span>
+      <span class="sc-price">¥${price}</span>
+    </div>
+    <div class="sc-content">${text}</div>
+  `;
+  
+  scContainer.appendChild(card);
+  
+  // 自动移除
+  setTimeout(() => {
+    card.style.opacity = '0';
+    card.style.transform = 'translateY(-20px)';
+    setTimeout(() => card.remove(), 300); // 等待动画结束
+  }, duration * 1000);
+  
+  // 同时发送到聊天栏
+  addSystemMessage(`[SC ¥${price}] ${user}: ${text}`);
+};
+
 userInput.addEventListener('keypress', (e) => {
   if (e.key === 'Enter') {
     sendMessage();
@@ -704,8 +860,23 @@ userInput.addEventListener('keypress', (e) => {
 });
 
 // ============ 初始化 ============
-window.addEventListener('DOMContentLoaded', () => {
+window.addEventListener('DOMContentLoaded', async () => {
   console.log('🚀 FlowRadio Electron UI 启动');
+  
+  // 初始化背景管理器
+  try {
+    const { BackgroundManager } = require('./backgrounds/manager.js');
+    backgroundManager = new BackgroundManager('dynamic-background');
+    await backgroundManager.init('tetris', {
+      blockSize: 30,
+      baseSpeed: 2,
+      spawnInterval: 60,
+    });
+    console.log('✅ 动态背景已初始化');
+  } catch (error) {
+    console.error('❌ 背景初始化失败:', error);
+  }
+  
   connectWebSocket();
   addSystemMessage('🤖 欢迎来到 FlowRadio! | 后端会自动选择 Coze/LLM 模式');
 });

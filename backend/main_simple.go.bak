@@ -1,0 +1,170 @@
+package main
+
+import (
+	"encoding/json"
+	"log"
+	"net/http"
+	"sync"
+
+	"github.com/gorilla/websocket"
+)
+
+// WebSocket 升级器
+var upgrader = websocket.Upgrader{
+	CheckOrigin: func(r *http.Request) bool {
+		return true // 允许所有来源
+	},
+}
+
+// 客户端管理器
+type ClientManager struct {
+	clients    map[*websocket.Conn]bool
+	broadcast  chan []byte
+	register   chan *websocket.Conn
+	unregister chan *websocket.Conn
+	mu         sync.Mutex
+}
+
+func newClientManager() *ClientManager {
+	return &ClientManager{
+		clients:    make(map[*websocket.Conn]bool),
+		broadcast:  make(chan []byte),
+		register:   make(chan *websocket.Conn),
+		unregister: make(chan *websocket.Conn),
+	}
+}
+
+func (manager *ClientManager) start() {
+	for {
+		select {
+		case client := <-manager.register:
+			manager.mu.Lock()
+			manager.clients[client] = true
+			manager.mu.Unlock()
+			log.Println("✅ 新客户端连接，当前连接数:", len(manager.clients))
+
+		case client := <-manager.unregister:
+			manager.mu.Lock()
+			if _, ok := manager.clients[client]; ok {
+				delete(manager.clients, client)
+				client.Close()
+			}
+			manager.mu.Unlock()
+			log.Println("❌ 客户端断开，当前连接数:", len(manager.clients))
+
+		case message := <-manager.broadcast:
+			manager.mu.Lock()
+			for client := range manager.clients {
+				err := client.WriteMessage(websocket.TextMessage, message)
+				if err != nil {
+					log.Printf("❌ 发送消息失败: %v", err)
+					client.Close()
+					delete(manager.clients, client)
+				}
+			}
+			manager.mu.Unlock()
+		}
+	}
+}
+
+// WebSocket 消息结构
+type WSMessage struct {
+	Type      string                 `json:"type"`
+	Message   string                 `json:"message,omitempty"`
+	Timestamp int64                  `json:"timestamp,omitempty"`
+	Action    map[string]interface{} `json:"action,omitempty"`
+	Style     string                 `json:"style,omitempty"`
+}
+
+var manager = newClientManager()
+
+func handleWebSocket(w http.ResponseWriter, r *http.Request) {
+	conn, err := upgrader.Upgrade(w, r, nil)
+	if err != nil {
+		log.Println("❌ WebSocket 升级失败:", err)
+		return
+	}
+
+	manager.register <- conn
+
+	// 发送欢迎消息
+	welcomeMsg := WSMessage{
+		Type:    "system_notification",
+		Message: "🎵 欢迎来到 FlowRadio！",
+	}
+	welcomeData, _ := json.Marshal(welcomeMsg)
+	conn.WriteMessage(websocket.TextMessage, welcomeData)
+
+	// 监听客户端消息
+	for {
+		_, message, err := conn.ReadMessage()
+		if err != nil {
+			log.Println("❌ 读取消息失败:", err)
+			manager.unregister <- conn
+			break
+		}
+
+		var msg WSMessage
+		if err := json.Unmarshal(message, &msg); err != nil {
+			log.Println("❌ 解析消息失败:", err)
+			continue
+		}
+
+		log.Printf("📩 收到消息: Type=%s, Message=%s", msg.Type, msg.Message)
+
+		// 处理不同类型的消息
+		switch msg.Type {
+		case "user_message":
+			// 简单回复 + Live2D 动作
+			response := WSMessage{
+				Type:    "chat_response",
+				Message: "收到你的消息: " + msg.Message,
+				Action: map[string]interface{}{
+					"characterId": "hiyori",
+					"motion":      "说话",
+					"text":        "好的,我听到了~",
+				},
+			}
+			responseData, _ := json.Marshal(response)
+			manager.broadcast <- responseData
+
+		case "request_music":
+			// 音乐风格切换
+			response := WSMessage{
+				Type:  "music_style_changed",
+				Style: "lofi",
+			}
+			responseData, _ := json.Marshal(response)
+			manager.broadcast <- responseData
+
+		default:
+			log.Println("⚠️ 未知消息类型:", msg.Type)
+		}
+	}
+}
+
+func main() {
+	log.SetFlags(log.LstdFlags | log.Lshortfile)
+	log.Println("========================================")
+	log.Println("  FlowRadio 简化后端 (WebSocket Only)")
+	log.Println("========================================")
+
+	// 启动客户端管理器
+	go manager.start()
+
+	// 注册 WebSocket 路由
+	http.HandleFunc("/ws", handleWebSocket)
+
+	// 健康检查
+	http.HandleFunc("/health", func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte("OK"))
+	})
+
+	log.Println("🚀 服务器启动在 http://localhost:8080")
+	log.Println("🔌 WebSocket 端点: ws://localhost:8080/ws")
+	log.Println("========================================")
+
+	if err := http.ListenAndServe(":8080", nil); err != nil {
+		log.Fatal("❌ 服务器启动失败:", err)
+	}
+}

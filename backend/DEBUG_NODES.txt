@@ -1,0 +1,113 @@
+🔍 [DEBUG] 节点: title='输出', type='Message', content长度=918
+   Content: {
+"host2":"听到你说“好悲伤”，心里像被一片软乎乎的云轻轻碰了一下——悲伤本来就是心里藏着的小情绪呀，不用急着推开它，也不用逼自己“快点好起来”。  
+
+如果愿意的话，能不能和我说说，今天这股悲伤是绕着哪件小事转呢？比如早上没赶上的那趟车？还是翻到旧照片时忽然冒出来的想念？哪怕只是“今天风有点凉，吹得鼻子酸”，我都在这儿认真听着。  
+
+刚才导播悄悄递来一杯热可可，说“给屏幕那头的朋友留一口温度”——你看，就算悲伤裹着你，也总有人偷偷给你递暖呀。慢慢来，我陪着你。",
+  "tts":"https://lf9-appstore-sign.oceancloudapi.com/ocean-cloud-tos/VolcanoUserVoice/speech_7426720361753903141_9ddbcbcb-4c58-4a17-b1da-c90bf93f3bb0.mp3?lk3s=da27ec82&x-expires=1765431447&x-signature=6nd4x1Az6zWOnf06kjvdogTzn%2BQ%3D"
+}
+
+   Content: {
+"host2":"听到你说“好悲伤”，心里像被一片软乎乎的云轻轻碰了一下——悲伤本来就是心里藏着的小情绪呀，不用急着推开它，也不用逼自己“快点好起来”。  
+
+如果愿意的话，能不能和我说说，今天这股悲伤是绕着哪件小事转呢？比如早上没赶上的那趟车？还是翻到旧照片时忽然冒出来的想念？哪怕只是“今天风有点凉，吹得鼻子酸”，我都在这儿认真听着。  
+
+刚才导播悄悄递来一杯热可可，说“给屏幕那头的朋友留一口温度”——你看，就算悲伤裹着你，也总有人偷偷给你递暖呀。慢慢来，我陪着你。",
+  "tts":"https://lf9-appstore-sign.oceancloudapi.com/ocean-cloud-tos/VolcanoUserVoice/speech_7426720361753903141_9ddbcbcb-4c58-4a17-b1da-c90bf93f3bb0.mp3?lk3s=da27ec82&x-expires=1765431447&x-signature=6nd4x1Az6zWOnf06kjvdogTzn%2BQ%3D"
+}
+
+🔍 [DEBUG] 节点: title='(debug)音乐提示词', type='Message', content长度=494
+   Content: {"music_config":{"bpm":65,"brightness":0.3,"density":0.2,"guidance":0,"scale":"F_MAJOR_D_MINOR","temperature":0.8},"reasoning":"用户表达悲伤情绪，选择慢节奏（65BPM）、稀疏音符密度（0.2）的钢琴+大提琴组合，用忧郁、深情的描述词，低亮度（0.3）营造深沉氛围，符合悲伤场景需求","weighted_prompts":[{"text":"Piano Solo, Melancholic, Slow Tempo, Soulful","weight":1.4},{"text":"Cello, Ethereal Ambience, Sustained Chords","weight":0.7}]}
+
+   Content: {"music_config":{"bpm":65,"brightness":0.3,"density":0.2,"guidance":0,"scale":"F_MAJOR_D_MINOR","temperature":0.8},"reasoning":"用户表达悲伤情绪，选择慢节奏（65BPM）、稀疏音符密度（0.2）的钢琴+大提琴组合，用忧郁、深情的描述词，低亮度（0.3）营造深沉氛围，符合悲伤场景需求","weighted_prompts":[{"text":"Piano Solo, Melancholic, Slow Tempo, Soulful","weight":1.4},{"text":"Cello, Ethereal Ambience, Sustained Chords","weight":0.7}]}
+
+🔍 [DEBUG] 节点: title='评论', type='Message', content长度=960
+   Content: {
+  "s1": "慢节奏好催泪，钢琴声太深情了。",
+  "s2": "大提琴一响，悲伤氛围直接拉满！",
+  "s3": "这组合搭配绝了，忧郁感太到位。",
+  "l1": "当舒缓的钢琴声缓缓响起，仿佛是一位老友在耳边轻声诉说着心底的哀愁。每一个音符都带着深沉的情感，如同夜空中闪烁的星辰，虽微弱却能照亮内心的黑暗角落。紧接着，大提琴那醇厚、空灵的声音加入进来，如同微风拂过湖面，泛起层层涟漪，让悲伤的情绪在空气中弥漫开来。这种慢节奏、稀疏音符密度的搭配，就像是一场心灵的洗礼，让人沉浸在这忧郁、深情的氛围中，忘却了外界的喧嚣与烦恼，只专注于内心那份难以言说的悲伤。它不仅仅是一首音乐，更是一种情感的寄托，能让每一个经历过悲伤的人找到共鸣，在音乐中释放自己的情绪，感受那份独特的宁静与安慰。"
+}
+
+
+   Content: {
+  "s1": "慢节奏好催泪，钢琴声太深情了。",
+  "s2": "大提琴一响，悲伤氛围直接拉满！",
+  "s3": "这组合搭配绝了，忧郁感太到位。",
+  "l1": "当舒缓的钢琴声缓缓响起，仿佛是一位老友在耳边轻声诉说着心底的哀愁。每一个音符都带着深沉的情感，如同夜空中闪烁的星辰，虽微弱却能照亮内心的黑暗角落。紧接着，大提琴那醇厚、空灵的声音加入进来，如同微风拂过湖面，泛起层层涟漪，让悲伤的情绪在空气中弥漫开来。这种慢节奏、稀疏音符密度的搭配，就像是一场心灵的洗礼，让人沉浸在这忧郁、深情的氛围中，忘却了外界的喧嚣与烦恼，只专注于内心那份难以言说的悲伤。它不仅仅是一首音乐，更是一种情感的寄托，能让每一个经历过悲伤的人找到共鸣，在音乐中释放自己的情绪，感受那份独特的宁静与安慰。"
+}
+
+
+🔍 [DEBUG] 节点: title='reply', type='Message', content长度=1364
+   Content: {
+  "r1": "没错，慢节奏和深情钢琴声特别适合催泪，很容易让人沉浸其中。",
+  "r2": "确实，大提琴的音色一出来，悲伤感立马就有了，太绝啦。",
+  "r3": "可不是嘛，这搭配营造出的忧郁氛围恰到好处，太有感觉了。",
+  "r4": "你描述得太细腻了，完全把这音乐带来的情感体验描绘出来了，让人更能感同身受。",
+  "link1": "https://lf26-appstore-sign.oceancloudapi.com/ocean-cloud-tos/VolcanoUserVoice/speech_7426720361753903141_9e33d79a-2048-4ea4-b013-8ddeda44daee.mp3?lk3s=da27ec82&x-expires=1765431461&x-signature=eO0BMOOXC49gNdZ1JT2NyVOIzPM%3D",
+  "link2": "https://lf26-appstore-sign.oceancloudapi.com/ocean-cloud-tos/VolcanoUserVoice/speech_7426720361753903141_d748d0a2-966d-4a64-900c-3848707ce24d.mp3?lk3s=da27ec82&x-expires=1765431461&x-signature=xaVzzV%2FH6%2Fld6fTx636FbxEVPxA%3D",
+  "link3": "https://lf9-appstore-sign.oceancloudapi.com/ocean-cloud-tos/VolcanoUserVoice/speech_7426720361753903141_55387239-f8ee-4c8e-84e2-7e0aa2e5b8ce.mp3?lk3s=da27ec82&x-expires=1765431461&x-signature=U09FfzuD%2Bn3noAuOSPhXuE43a6I%3D",
+  "link4": "https://lf6-appstore-sign.oceancloudapi.com/ocean-cloud-tos/VolcanoUserVoice/speech_7426720361753903141_84f2ab0a-0425-41a8-9a1a-591eb0cbb539.mp3?lk3s=da27ec82&x-expires=1765431461&x-signature=lvWIw8x7lP8DImWxtzPHDQJRAMk%3D"
+}
+
+
+   Content: {
+  "r1": "没错，慢节奏和深情钢琴声特别适合催泪，很容易让人沉浸其中。",
+  "r2": "确实，大提琴的音色一出来，悲伤感立马就有了，太绝啦。",
+  "r3": "可不是嘛，这搭配营造出的忧郁氛围恰到好处，太有感觉了。",
+  "r4": "你描述得太细腻了，完全把这音乐带来的情感体验描绘出来了，让人更能感同身受。",
+  "link1": "https://lf26-appstore-sign.oceancloudapi.com/ocean-cloud-tos/VolcanoUserVoice/speech_7426720361753903141_9e33d79a-2048-4ea4-b013-8ddeda44daee.mp3?lk3s=da27ec82&x-expires=1765431461&x-signature=eO0BMOOXC49gNdZ1JT2NyVOIzPM%3D",
+  "link2": "https://lf26-appstore-sign.oceancloudapi.com/ocean-cloud-tos/VolcanoUserVoice/speech_7426720361753903141_d748d0a2-966d-4a64-900c-3848707ce24d.mp3?lk3s=da27ec82&x-expires=1765431461&x-signature=xaVzzV%2FH6%2Fld6fTx636FbxEVPxA%3D",
+  "link3": "https://lf9-appstore-sign.oceancloudapi.com/ocean-cloud-tos/VolcanoUserVoice/speech_7426720361753903141_55387239-f8ee-4c8e-84e2-7e0aa2e5b8ce.mp3?lk3s=da27ec82&x-expires=1765431461&x-signature=U09FfzuD%2Bn3noAuOSPhXuE43a6I%3D",
+  "link4": "https://lf6-appstore-sign.oceancloudapi.com/ocean-cloud-tos/VolcanoUserVoice/speech_7426720361753903141_84f2ab0a-0425-41a8-9a1a-591eb0cbb539.mp3?lk3s=da27ec82&x-expires=1765431461&x-signature=lvWIw8x7lP8DImWxtzPHDQJRAMk%3D"
+}
+
+
+🔍 [DEBUG] 节点: title='主持人1输出', type='Message', content长度=1856
+   Content: {
+"host1":"（轻柔的背景音渐起，主持人的声音带着温暖的共情，语速缓慢而舒缓）  
+
+亲爱的听众朋友，晚上好。  
+
+我知道，有些时刻，悲伤像细密的雨丝，悄悄落在心头——不是滂沱的泪，而是那种轻轻的、挥之不去的沉郁，像握不住的月光，又像藏在衣角的褶皱。没关系，今晚，我们不用急着说“没关系”，就让音乐陪你，慢慢接住这份情绪。  
+
+接下来要送给你的这首曲子，是我们为此刻的你量身定制的：65拍的慢节奏，让时光在这里温柔地放缓脚步；稀疏的音符密度，像你心里那些未曾说出口的留白，每一声都落在最柔软的地方。钢琴的指尖轻触琴键，带着忧郁却深情的质感，每一个旋律都像你眼底轻轻的叹息；而大提琴低沉的呢喃，伴着空灵的氛围与绵长的和弦，像一位沉默的知己，用它温暖的音色，包裹住你所有的不安与怅惘。  
+
+低饱和度的音乐亮度，就像傍晚时分渐渐暗下来的天空，不刺眼，却足够让你看清自己内心的模样。没有刻意的安慰，只有灵魂深处的共鸣——就像此刻，我在这里，你在那里，而音乐，在我们之间搭起一座桥。  
+
+现在，请你轻轻闭上眼，让钢琴与大提琴的对话，慢慢淌过你的耳畔。愿这旋律，能成为你今晚最温柔的枕头。  
+
+（音乐缓缓响起）  
+
+——请听这首《未说出口的温柔》。  
+
+（声音渐弱，融入音乐中）  
+
+（注：曲名可根据氛围调整，此处为贴合情绪的拟名）",
+  "tts":"https://lf26-appstore-sign.oceancloudapi.com/ocean-cloud-tos/VolcanoUserVoice/speech_7426720361753903141_18a8b12e-5198-4617-a650-b8b92de0c5c7.mp3?lk3s=da27ec82&x-expires=1765431477&x-signature=KFqDA9ez7DmVCcTmvd3zept0HIs%3D"
+}
+
+   Content: {
+"host1":"（轻柔的背景音渐起，主持人的声音带着温暖的共情，语速缓慢而舒缓）  
+
+亲爱的听众朋友，晚上好。  
+
+我知道，有些时刻，悲伤像细密的雨丝，悄悄落在心头——不是滂沱的泪，而是那种轻轻的、挥之不去的沉郁，像握不住的月光，又像藏在衣角的褶皱。没关系，今晚，我们不用急着说“没关系”，就让音乐陪你，慢慢接住这份情绪。  
+
+接下来要送给你的这首曲子，是我们为此刻的你量身定制的：65拍的慢节奏，让时光在这里温柔地放缓脚步；稀疏的音符密度，像你心里那些未曾说出口的留白，每一声都落在最柔软的地方。钢琴的指尖轻触琴键，带着忧郁却深情的质感，每一个旋律都像你眼底轻轻的叹息；而大提琴低沉的呢喃，伴着空灵的氛围与绵长的和弦，像一位沉默的知己，用它温暖的音色，包裹住你所有的不安与怅惘。  
+
+低饱和度的音乐亮度，就像傍晚时分渐渐暗下来的天空，不刺眼，却足够让你看清自己内心的模样。没有刻意的安慰，只有灵魂深处的共鸣——就像此刻，我在这里，你在那里，而音乐，在我们之间搭起一座桥。  
+
+现在，请你轻轻闭上眼，让钢琴与大提琴的对话，慢慢淌过你的耳畔。愿这旋律，能成为你今晚最温柔的枕头。  
+
+（音乐缓缓响起）  
+
+——请听这首《未说出口的温柔》。  
+
+（声音渐弱，融入音乐中）  
+
+（注：曲名可根据氛围调整，此处为贴合情绪的拟名）",
+  "tts":"https://lf26-appstore-sign.oceancloudapi.com/ocean-cloud-tos/VolcanoUserVoice/speech_7426720361753903141_18a8b12e-5198-4617-a650-b8b92de0c5c7.mp3?lk3s=da27ec82&x-expires=1765431477&x-signature=KFqDA9ez7DmVCcTmvd3zept0HIs%3D"
+}
+

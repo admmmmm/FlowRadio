@@ -1,0 +1,238 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <title>FlowRadio 集成测试</title>
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+    
+    body {
+      width: 100vw;
+      height: 100vh;
+      overflow: hidden;
+      background: #000;
+      color: #fff;
+      font-family: 'Microsoft YaHei', sans-serif;
+    }
+    
+    /* Live2D iframe */
+    #live2d-frame {
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      border: none;
+      z-index: 1;
+      pointer-events: none;
+    }
+    
+    /* 控制面板 */
+    #control-panel {
+      position: fixed;
+      top: 20px;
+      left: 20px;
+      background: rgba(20, 20, 30, 0.9);
+      backdrop-filter: blur(10px);
+      padding: 20px;
+      border-radius: 10px;
+      z-index: 100;
+      max-width: 400px;
+    }
+    
+    h2 {
+      margin-bottom: 15px;
+      color: #667eea;
+    }
+    
+    .input-group {
+      margin: 10px 0;
+    }
+    
+    label {
+      display: block;
+      margin-bottom: 5px;
+      font-size: 14px;
+      opacity: 0.8;
+    }
+    
+    input, select, textarea {
+      width: 100%;
+      padding: 8px;
+      background: rgba(255, 255, 255, 0.1);
+      border: 1px solid rgba(255, 255, 255, 0.2);
+      border-radius: 5px;
+      color: white;
+      font-family: inherit;
+    }
+    
+    textarea {
+      resize: vertical;
+      min-height: 60px;
+    }
+    
+    button {
+      width: 100%;
+      padding: 10px;
+      margin: 5px 0;
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      border: none;
+      border-radius: 5px;
+      color: white;
+      cursor: pointer;
+      font-size: 14px;
+      font-weight: bold;
+      transition: transform 0.2s;
+    }
+    
+    button:hover {
+      transform: translateY(-2px);
+    }
+    
+    button:active {
+      transform: translateY(0);
+    }
+    
+    #log {
+      margin-top: 15px;
+      padding: 10px;
+      background: rgba(0, 0, 0, 0.5);
+      border-radius: 5px;
+      max-height: 200px;
+      overflow-y: auto;
+      font-size: 12px;
+      font-family: monospace;
+    }
+    
+    .log-entry {
+      margin: 2px 0;
+      padding: 2px 0;
+    }
+    
+    .log-success { color: #00ff88; }
+    .log-error { color: #ff0088; }
+    .log-info { color: #00aaff; }
+    .log-warn { color: #ffaa00; }
+  </style>
+</head>
+<body>
+  <!-- Live2D iframe (可切换测试) -->
+  <!-- 测试版: test-bubble.html | 正式版: flowradio.html -->
+  <iframe id="live2d-frame" src="http://localhost:5173/flowradio.html"></iframe>
+  
+  <!-- 控制面板 -->
+  <div id="control-panel">
+    <h2>🎭 FlowRadio 集成测试</h2>
+    
+    <div class="input-group">
+      <label>角色:</label>
+      <select id="charSelect">
+        <option value="hiyori">Hiyori</option>
+        <option value="mao">Mao</option>
+      </select>
+    </div>
+    
+    <div class="input-group">
+      <label>对话文本:</label>
+      <textarea id="textInput" placeholder="输入要显示的文本...">大家好，我是AI主播！欢迎来到FlowRadio！</textarea>
+    </div>
+    
+    <div class="input-group">
+      <label>音频URL (可选):</label>
+      <input type="text" id="audioInput" placeholder="http://...">
+    </div>
+    
+    <button onclick="sendSayMessage()">📢 显示气泡 (postMessage)</button>
+    <button onclick="togglePanel()">🎛️ 切换Panel</button>
+    <button onclick="clearLog()">🗑️ 清空日志</button>
+    
+    <div id="log"></div>
+  </div>
+  
+  <script>
+    const iframe = document.getElementById('live2d-frame');
+    const logDiv = document.getElementById('log');
+    
+    function log(msg, type = 'info') {
+      const time = new Date().toLocaleTimeString();
+      const entry = document.createElement('div');
+      entry.className = `log-entry log-${type}`;
+      entry.textContent = `[${time}] ${msg}`;
+      logDiv.appendChild(entry);
+      logDiv.scrollTop = logDiv.scrollHeight;
+      console.log(`[${type.toUpperCase()}]`, msg);
+    }
+    
+    window.clearLog = () => {
+      logDiv.innerHTML = '';
+    };
+    
+    // 监听Live2D iframe的消息
+    window.addEventListener('message', (event) => {
+      const { type, success, result, error, enabled } = event.data;
+      
+      if (type === 'live2d-ready') {
+        log('✅ Live2D iframe已就绪', 'success');
+      } else if (type === 'live2d-say-result') {
+        if (success) {
+          log(`✅ 气泡显示成功: ${JSON.stringify(result)}`, 'success');
+        } else {
+          log(`❌ 气泡显示失败: ${error}`, 'error');
+        }
+      } else if (type === 'panel-toggled') {
+        log(`🎛️ Panel状态: ${enabled ? 'ON' : 'OFF'}`, 'info');
+      }
+    });
+    
+    // 发送say消息
+    window.sendSayMessage = () => {
+      const charId = document.getElementById('charSelect').value;
+      const text = document.getElementById('textInput').value;
+      const audioUrl = document.getElementById('audioInput').value || null;
+      
+      if (!text.trim()) {
+        log('⚠️ 请输入文本', 'warn');
+        return;
+      }
+      
+      log(`📤 发送消息到Live2D: [${charId}] "${text}"`, 'info');
+      
+      iframe.contentWindow.postMessage({
+        type: 'live2d-say',
+        data: {
+          id: charId,
+          text: text,
+          audioUrl: audioUrl,
+          motion: '说话',
+          expression: null,
+          crossOrigin: 'anonymous',
+          charsPerSec: 8,
+          fontSize: 18,
+          maxLines: 3,
+          maxCharsPerLine: 14
+        }
+      }, '*');
+    };
+    
+    // 切换Panel
+    window.togglePanel = () => {
+      log('📤 发送Panel切换消息', 'info');
+      iframe.contentWindow.postMessage({
+        type: 'toggle-panel'
+      }, '*');
+    };
+    
+    // 等待iframe加载
+    iframe.addEventListener('load', () => {
+      log('🔄 iframe已加载', 'info');
+    });
+    
+    log('🚀 FlowRadio集成测试已启动', 'success');
+    log('ℹ️ 等待Live2D加载...', 'info');
+  </script>
+</body>
+</html>
