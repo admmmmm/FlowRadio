@@ -3,10 +3,10 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; frame-src http://localhost:5173 http://localhost:5174; connect-src http://localhost:* ws://localhost:* https://*.oceancloudapi.com; media-src 'self' https://*.oceancloudapi.com;">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self' 'unsafe-inline' file: data: blob:; script-src 'self' 'unsafe-inline' 'unsafe-eval' file:; style-src 'self' 'unsafe-inline'; frame-src http://localhost:5173 http://localhost:5174; connect-src 'self' http://localhost:* ws://localhost:* https://*.oceancloudapi.com file: data: blob:; media-src 'self' https://*.oceancloudapi.com file: data: blob:; img-src 'self' data: blob: file:;">
   <title>FlowRadio - AI DJ</title>
   <!-- 引入 Tetris 3D SDK -->
-  <script type="module" src="./tetris_3d/assets/index-SXP-Vc3F.js"></script>
+  <script type="module" src="./tetris_3d/assets/index-BuotGJOg.js"></script>
   <style>
     * {
       margin: 0;
@@ -420,6 +420,7 @@
       <iframe 
         id="live2d-frame" 
         src="http://localhost:5173/flowradio.html"
+        allowtransparency="true"
         style="
           position: absolute;
           top: 0;
@@ -428,6 +429,7 @@
           height: 100%;
           border: none;
           pointer-events: none;
+          background: transparent;
         "
       ></iframe>
     </div>

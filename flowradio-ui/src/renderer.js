@@ -131,25 +131,52 @@ class FlowRadioApp {
       // this.currentBackground = this.tetrisBackground;
       
       // 初始化 Tetris 3D SDK
-      if (window.TetrisSDK) {
+      console.log('[FlowRadioApp] Step 5: Waiting for Tetris 3D SDK...');
+      
+      const initTetris = () => {
+        if (!window.TetrisSDK) {
+            console.log('[Tetris] SDK not ready yet, retrying...');
+            setTimeout(initTetris, 500);
+            return;
+        }
+
+        const bgEl = document.getElementById('live-bg');
+        if (!bgEl) {
+            console.error('[Tetris] #live-bg element not found!');
+            return;
+        }
+
+        const rect = bgEl.getBoundingClientRect();
+        console.log(`[Tetris] Container size: ${rect.width}x${rect.height}`);
+
         try {
+            console.log('[Tetris] Initializing SDK...');
+            // ⚠️ 不要增加任何参数，否则会覆盖默认
             window.TetrisSDK.init('live-bg');
             console.log('[FlowRadioApp] ✓ Tetris 3D SDK initialized');
             
-            // 监听重置事件
+            // 外部 API 调用示例 (可选)
             if (window.TetrisFlow) {
+                // 音乐映射
+                window.TetrisFlow.syncMusic({
+                    density: 0.8,       // 音乐密度 (0.0 ~ 1.0) -> 控制流动速度
+                    brightness: 0.5,    // 音乐明亮度 (0.0 ~ 1.0) -> 控制颜色色调
+                    expectedDuration: 180 // 歌曲预期时长 (秒) -> 自动计算 BPM 以填满屏幕
+                });
+
                 window.TetrisFlow.on('reset', () => {
                     console.log("[Tetris] Visuals Finished. Playing next song...");
-                    // 这里可以触发切歌逻辑，如果需要的话
                 });
             }
         } catch (e) {
             console.error('[FlowRadioApp] ❌ Failed to init Tetris SDK:', e);
         }
-      } else {
-          console.warn('[FlowRadioApp] ⚠️ TetrisSDK not found on window');
-      }
-      console.log('[FlowRadioApp] ✓ Background setup complete');
+      };
+
+      // 启动轮询
+      setTimeout(initTetris, 1000); // 初始延迟 1秒
+      
+      console.log('[FlowRadioApp] ✓ Background setup initiated');
 
       // 初始化 Live2D（使用独立仓库）
       console.log('[FlowRadioApp] Step 6: Initializing Live2D iframe...');
