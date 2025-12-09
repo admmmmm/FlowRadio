@@ -3,8 +3,10 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; frame-src http://localhost:5173 http://localhost:5174; connect-src http://localhost:* ws://localhost:*;">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; frame-src http://localhost:5173 http://localhost:5174; connect-src http://localhost:* ws://localhost:* https://*.oceancloudapi.com; media-src 'self' https://*.oceancloudapi.com;">
   <title>FlowRadio - AI DJ</title>
+  <!-- 引入 Tetris 3D SDK -->
+  <script type="module" src="./tetris_3d/assets/index-SXP-Vc3F.js"></script>
   <style>
     * {
       margin: 0;
@@ -394,7 +396,8 @@
 
   <!-- 主应用容器 -->
   <div id="app-container">
-    <!-- 背景层由 PixiJS 动态插入 -->
+    <!-- 背景层 (Tetris 3D) -->
+    <div id="live-bg" style="position: absolute; top: 0; left: 0; width: 100%; height: 100%; z-index: 0;"></div>
     
     <!-- 弹幕容器 -->
     <div id="danmakuContainer"></div>
@@ -445,6 +448,7 @@
 
       <div class="settings-tabs">
         <button class="tab-btn active" data-tab="history">聊天历史</button>
+        <button class="tab-btn" data-tab="audio">音频设置</button>
         <button class="tab-btn" data-tab="magenta">Magenta</button>
       </div>
 
@@ -462,6 +466,27 @@
             <button id="clear-history-btn" style="padding: 8px 12px; background: #e53e3e; border: none; border-radius: 4px; color: white; cursor: pointer;">清空</button>
           </div>
           <div id="chat-history-list"></div>
+        </div>
+
+        <!-- 音频设置 -->
+        <div class="tab-pane" id="tab-audio">
+          <h3 style="margin-bottom: 20px;">🔊 音量控制</h3>
+          
+          <div class="form-group">
+            <label>主播音量 (Host): <span id="host-volume-value">100%</span></label>
+            <input type="range" id="host-volume-slider" min="0" max="100" value="100">
+          </div>
+
+          <div class="form-group">
+            <label>背景音乐音量 (Magenta): <span id="music-volume-value">50%</span></label>
+            <input type="range" id="music-volume-slider" min="0" max="100" value="50">
+          </div>
+          
+          <div class="form-group">
+             <button id="toggle-live2d-panel" style="width: 100%; padding: 10px; background: rgba(255,255,255,0.1); border: 1px solid rgba(255,255,255,0.2); color: white; border-radius: 4px; cursor: pointer;">
+               开启/关闭 Live2D 面板
+             </button>
+          </div>
         </div>
 
         <!-- Magenta表单 -->

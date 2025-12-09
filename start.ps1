@@ -28,15 +28,9 @@ if (Test-Path $envFile) {
 if ($env:COZE_MAIN_WORKFLOW_ID) {
     $env:MAIN_WORKFLOW_ID = $env:COZE_MAIN_WORKFLOW_ID
 }
-if ($env:COZE_COMMENT_REPLY_WORKFLOW_ID) {
-    $env:COMMENT_WORKFLOW_ID = $env:COZE_COMMENT_REPLY_WORKFLOW_ID
-}
 # Set default APP_IDs if not provided
 if (-not $env:MAIN_APP_ID) {
     $env:MAIN_APP_ID = "default"
-}
-if (-not $env:COMMENT_APP_ID) {
-    $env:COMMENT_APP_ID = "default"
 }
 
 # Check environment variables
@@ -98,9 +92,7 @@ Start-Process powershell -ArgumentList "-NoExit", "-Command", "cd '$PSScriptRoot
 `$env:COZE_API_TOKEN='$env:COZE_API_TOKEN'; `
 `$env:VOLCANO_API_KEY='$env:VOLCANO_API_KEY'; `
 `$env:MAIN_WORKFLOW_ID='$env:MAIN_WORKFLOW_ID'; `
-`$env:MAIN_APP_ID='$env:MAIN_APP_ID'; `
-`$env:COMMENT_WORKFLOW_ID='$env:COMMENT_WORKFLOW_ID'; `
-`$env:COMMENT_APP_ID='$env:COMMENT_APP_ID'; .\flowradio-ws.exe"
+`$env:MAIN_APP_ID='$env:MAIN_APP_ID'; .\flowradio-ws.exe"
 Start-Sleep -Seconds 3
 
 # 3. Start Live2D Service

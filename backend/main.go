@@ -9,6 +9,8 @@ import (
 	"os"
 	"sync"
 	"time"
+
+	"github.com/joho/godotenv"
 )
 
 const (
@@ -37,6 +39,12 @@ type GlobalState struct {
 
 func main() {
 	log.SetFlags(log.LstdFlags | log.Lshortfile)
+	
+	// 加载环境变量
+	if err := godotenv.Load("../.env"); err != nil {
+		log.Printf("⚠️ 未找到 .env 文件或加载失败: %v", err)
+	}
+
 	log.Println("========================================")
 	log.Println("     FlowRadio Backend 启动中...")
 	log.Println("========================================")

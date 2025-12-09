@@ -70,6 +70,12 @@ class FlowRadioApp {
     // 语音队列
     this.speechQueue = [];
     this.isSpeaking = false;
+    this.speechId = 0; // 用于追踪当前的语音任务ID，防止中断时的竞态条件
+    
+    // 音量控制
+    this.hostVolume = 1.0;
+    this.musicVolume = 0.5;
+    this.musicGainNode = null;
 
     // SC 队列
     this.scQueue = [];
@@ -119,11 +125,31 @@ class FlowRadioApp {
       // this.layoutManager.registerElement('live2dRight', this.live2dRight.element);
       
       // ⚠️ 暂时跳过 PixiJS 背景（简化调试）
-      console.log('[FlowRadioApp] Step 5: Skipping PixiJS background (simplified mode)...');
+      console.log('[FlowRadioApp] Step 5: Initializing Tetris 3D Background...');
       // await this.initPixiBackground();
       // this.tetrisBackground = new TetrisNeonBackground(this.pixiApp);
       // this.currentBackground = this.tetrisBackground;
-      console.log('[FlowRadioApp] ✓ Background skipped');
+      
+      // 初始化 Tetris 3D SDK
+      if (window.TetrisSDK) {
+        try {
+            window.TetrisSDK.init('live-bg');
+            console.log('[FlowRadioApp] ✓ Tetris 3D SDK initialized');
+            
+            // 监听重置事件
+            if (window.TetrisFlow) {
+                window.TetrisFlow.on('reset', () => {
+                    console.log("[Tetris] Visuals Finished. Playing next song...");
+                    // 这里可以触发切歌逻辑，如果需要的话
+                });
+            }
+        } catch (e) {
+            console.error('[FlowRadioApp] ❌ Failed to init Tetris SDK:', e);
+        }
+      } else {
+          console.warn('[FlowRadioApp] ⚠️ TetrisSDK not found on window');
+      }
+      console.log('[FlowRadioApp] ✓ Background setup complete');
 
       // 初始化 Live2D（使用独立仓库）
       console.log('[FlowRadioApp] Step 6: Initializing Live2D iframe...');
@@ -390,6 +416,11 @@ class FlowRadioApp {
         this.topBar.showMessage(data.message, 3000, 'warning');
         break;
 
+      case 'URGENT_PLAY':
+        // 紧急插播 (Fast Ack)
+        this.handleUrgentPlay(data);
+        break;
+
       default:
         console.log('[WebSocket] Unknown message type:', data.type);
     }
@@ -414,9 +445,30 @@ class FlowRadioApp {
       console.log('[Coze] ✅ 从raw_host解析:', { script: script.substring(0, 50), tts_url });
     }
     
+    // 智能解析角色 (从 script 前缀)
+    let role = 'Baobab'; // 默认为 Baobab (Host 1)
+    
+    if (script) {
+        if (script.includes('Mao:') || script.includes('Acacia:')) {
+            role = 'Mao';
+            // 移除前缀以便显示更干净
+            script = script.replace(/^(Mao|Acacia):\s*/, '');
+        } else if (script.includes('Baobab:')) {
+            role = 'Baobab';
+            script = script.replace(/^Baobab:\s*/, '');
+        }
+    }
+
+    // 过滤掉 URL 显示 (如果 script 中包含 URL)
+    if (script && (script.includes('http://') || script.includes('https://'))) {
+        // 简单的正则替换，移除 URL
+        script = script.replace(/https?:\/\/[^\s]+/g, '').trim();
+    }
+
     console.log('[Coze] 📢 主持人播报:', script || '(空)');
     console.log('[Coze] 🎯 TTS URL:', tts_url || '(空)');
     console.log('[Coze] 📍 来源:', source);
+    console.log('[Coze] 🎭 角色:', role);
     
     if (!script) {
       console.error('[Coze] ❌ HOST_MESSAGE 缺少 script 字段,完整数据:', messageData);
@@ -427,7 +479,7 @@ class FlowRadioApp {
     this.enqueueSpeech({
       text: script,
       audioUrl: tts_url,
-      role: 'AI'
+      role: role
     });
     
     // 保存到聊天历史
@@ -447,6 +499,23 @@ class FlowRadioApp {
     this.isPreBuffering = true;
     this.preBufferQueue = [];
     console.log('[Audio] 🔄 音乐切换,重置音频缓冲');
+    
+    // 同步 Tetris 3D 视觉效果
+    if (window.TetrisFlow && music_config) {
+        try {
+            console.log('[Tetris] Syncing music params:', music_config);
+            window.TetrisFlow.syncMusic({
+                density: music_config.density || 0.5,
+                brightness: music_config.brightness || 0.5,
+                expectedDuration: 180 // 默认 3 分钟
+            });
+            
+            // 如果有 BPM，也可以尝试设置 (虽然 syncMusic 主要是 density/brightness)
+            // TetrisFlow 可能有其他 API 设置 BPM，或者通过 syncMusic 内部处理
+        } catch (e) {
+            console.error('[Tetris] Failed to sync music:', e);
+        }
+    }
     
     // 显示提示
     const bpm = music_config?.bpm || '?';
@@ -553,6 +622,66 @@ class FlowRadioApp {
   }
 
   /**
+   * 处理紧急插播 (Fast Ack)
+   */
+  handleUrgentPlay(data) {
+    console.log('[Speech] 🚨 URGENT INTERRUPT:', data);
+    const { audioUrl, text } = data;
+
+    // 0. 标记当前任务失效 (这会导致正在进行的 processSpeechQueue 抛出异常或提前结束)
+    this.speechId++;
+
+    // 1. 停止当前播放
+    if (this.currentAudio) {
+      console.log('[Speech] 🛑 Stopping current audio');
+      this.currentAudio.pause();
+      this.currentAudio = null;
+    }
+    
+    // 2. 取消当前的等待计时器
+    if (this.speechTimer) {
+      console.log('[Speech] 🛑 Cancelling speech timer');
+      clearTimeout(this.speechTimer);
+      this.speechTimer = null;
+    }
+
+    // 3. 如果正在等待Promise，立即解决它以便结束当前处理流程
+    if (this.speechResolver) {
+      this.speechResolver(); 
+      this.speechResolver = null;
+    }
+
+    // 4. 清空队列
+    if (this.speechQueue.length > 0) {
+      console.log(`[Speech] 🗑️ Clearing queue of ${this.speechQueue.length} items.`);
+      this.speechQueue = [];
+    }
+    
+    // 5. 加入紧急消息
+    // 注意: 不要在此时重置 isSpeaking = false，因为 processSpeechQueue 的 finally 块会处理它。
+    // 如果我们在这里重置，enqueueSpeech 会立即启动新的播放，然后 finally 块会再次重置 isSpeaking，导致状态不一致。
+    
+    console.log('[Speech] ⚡ Enqueueing urgent message');
+    
+    // 过滤掉 URL 显示
+    let cleanText = text;
+    if (cleanText && (cleanText.includes('http://') || cleanText.includes('https://'))) {
+        cleanText = cleanText.replace(/https?:\/\/[^\s]+/g, '').trim();
+    }
+
+    // 保存到聊天历史 (确保 Fast Ack 也被记录)
+    // ⚠️ 修正: Fast Ack 默认是 Host 1 (Baobab)
+    this.saveChatHistory('AI', cleanText, audioUrl);
+
+    this.enqueueSpeech({
+      text: cleanText,
+      audioUrl: audioUrl,
+      role: 'Baobab', // ⚠️ 明确指定角色为 Baobab (Host 1)
+      isUrgent: true
+    });
+  }
+
+  /**
    * 语音队列管理
    */
   enqueueSpeech(item) {
@@ -564,10 +693,11 @@ class FlowRadioApp {
     if (this.isSpeaking || this.speechQueue.length === 0) return;
     
     this.isSpeaking = true;
+    const currentId = ++this.speechId; // 获取当前任务ID
     const item = this.speechQueue.shift();
     
     try {
-      console.log('[Speech] Processing:', item.text.substring(0, 20) + '...');
+      console.log(`[Speech] Processing ${item.isUrgent ? '(URGENT)' : ''}:`, item.text.substring(0, 20) + '...');
       
       // 1. 获取音频时长 (如果可能)
       let duration = 5000; // 默认 5秒
@@ -584,32 +714,52 @@ class FlowRadioApp {
         duration = item.text.length * 200 + 1000;
       }
       
+      // 检查中断: 如果在获取时长期间发生了中断
+      if (this.speechId !== currentId) {
+        throw new Error('Interrupted before playback');
+      }
+      
       // 2. 触发 Live2D 说话
       // 根据 role 决定 characterId
-      // 假设 'AI' 是 Host 1 (Hiyori), 'Mao' 是 Mao
-      // 如果 role 未知，默认 Hiyori
+      // 注意: Live2D 那边可能只识别 'mao' 和 'hiyori' (或 'baobab'?)
+      // 假设 Host 1 是 'hiyori' (Baobab), Host 2 是 'mao' (Acacia)
       const characterId = (item.role === 'Mao') ? 'mao' : 'hiyori';
       
-      // 强制在 Renderer 端播放音频 (双重保险)
-      // 注意: 如果 Live2D 也播，会有重音。但为了确保有声音，我们先播。
-      // 理想情况下 Live2D 应该负责播。
+      // ⚠️ 移除 Renderer 直接播放，改为完全依赖 Live2D 的 say 方法
+      // 这样可以解决双重播放问题，并确保口型同步
+      /*
       if (item.audioUrl) {
-        console.log('[Speech] 🔊 Playing audio in Renderer:', item.audioUrl);
-        const audio = new Audio(item.audioUrl);
-        audio.volume = 1.0;
-        audio.play()
-          .then(() => console.log('[Speech] ✅ Renderer audio started'))
-          .catch(e => console.warn('[Speech] ❌ Renderer audio play failed:', e));
+        // ... (removed)
       }
+      */
 
+      // ⚠️ 确保 Fast Ack 也能触发 Live2D
       this.triggerLive2DSpeech(item.text, item.audioUrl, characterId);
       
-      // 3. 等待播放完成 (加一点缓冲)
-      await new Promise(resolve => setTimeout(resolve, duration + 500));
+      // 3. 等待播放完成 (支持中断)
+      await new Promise(resolve => {
+        // 再次检查中断 (防止在 await getAudioDuration 和 new Promise 之间发生中断)
+        if (this.speechId !== currentId) {
+            resolve();
+            return;
+        }
+        
+        this.speechResolver = resolve;
+        this.speechTimer = setTimeout(() => {
+          this.speechTimer = null;
+          this.speechResolver = null;
+          resolve();
+        }, duration + 500);
+      });
       
     } catch (error) {
-      console.error('[Speech] Error processing queue item:', error);
+      if (error.message === 'Interrupted before playback') {
+        console.log('[Speech] 🛑 Task interrupted.');
+      } else {
+        console.error('[Speech] Error processing queue item:', error);
+      }
     } finally {
+      this.currentAudio = null;
       this.isSpeaking = false;
       // 处理下一个
       this.processSpeechQueue();
@@ -658,6 +808,7 @@ class FlowRadioApp {
           id: characterId,
           text: text,
           audioUrl: audioUrl, // 依然传给 Live2D，以便它做口型 (如果它支持)
+          volume: this.hostVolume, // ✅ 传递音量
           motion: '说话',
           expression: null,
           crossOrigin: 'anonymous',
@@ -667,6 +818,10 @@ class FlowRadioApp {
           maxCharsPerLine: 14
         }
       }, '*');
+
+      // ⚠️ 强制播放音频 (如果 Live2D 内部不播放)
+      // 注意: processSpeechQueue 已经播放了音频，这里不需要再次播放
+      // 除非 Live2D 需要音频来做口型同步，但我们已经传了 audioUrl
       
     } catch (error) {
       console.error('[Live2D] ❌ 触发说话失败:', error);
@@ -775,7 +930,12 @@ class FlowRadioApp {
       this.analyser.fftSize = 256;
       this.analyser.connect(this.audioContext.destination);
       
-      console.log('[Audio] ✅ Web Audio Context 已初始化 (48kHz Stereo, 优化缓冲)');
+      // 创建音乐增益节点 (音量控制)
+      this.musicGainNode = this.audioContext.createGain();
+      this.musicGainNode.gain.value = this.musicVolume;
+      this.musicGainNode.connect(this.analyser);
+      
+      console.log('[Audio] ✅ Web Audio Context 已初始化 (48kHz Stereo, 优化缓冲, 带增益控制)');
       console.log(`[Audio]    - Sample Rate: ${this.audioContext.sampleRate} Hz`);
       console.log(`[Audio]    - Latency Hint: playback (减少卡顿)`);
       console.log(`[Audio]    - Base Latency: ${this.audioContext.baseLatency.toFixed(3)}s`);
@@ -860,7 +1020,9 @@ class FlowRadioApp {
       source.buffer = audioBuffer;
       
       // 连接到分析器和输出
-      if (this.analyser) {
+      if (this.musicGainNode) {
+        source.connect(this.musicGainNode);
+      } else if (this.analyser) {
         source.connect(this.analyser);
       } else {
         source.connect(this.audioContext.destination);
@@ -1040,7 +1202,7 @@ class FlowRadioApp {
 
     // 加入 SC 队列 (带后端发送标志)
     this.enqueueSuperChat({
-      user: 'User',
+      user: '大樹', // 本地用户默认名为 adm
       text: message,
       price: 0,
       duration: 5, // 用户消息默认 5秒
@@ -1051,14 +1213,17 @@ class FlowRadioApp {
   /**
    * 发送消息到后端
    */
-  sendToBackend(text) {
+  sendToBackend(text, username = 'adm') {
     if (this.ws && this.ws.readyState === WebSocket.OPEN) {
       this.ws.send(JSON.stringify({
         type: 'USER_INPUT',
-        data: { text: text },
+        data: { 
+          text: text,
+          username: username
+        },
         timestamp: Date.now()
       }));
-      console.log('[WebSocket] ✅ 发送USER_INPUT到Coze后端:', text);
+      console.log(`[WebSocket] ✅ 发送USER_INPUT到Coze后端: User=${username}, Text=${text}`);
     } else {
       this.topBar.showMessage('❌ 后端未连接', 2000, 'warning');
     }
@@ -1094,7 +1259,7 @@ class FlowRadioApp {
       // 注意: 这里发送后，AI 会开始处理。
       // 由于我们等待了 duration，所以下一条消息会在 duration 之后才发送给 AI。
       if (item.sendToBackend) {
-        this.sendToBackend(item.text);
+        this.sendToBackend(item.text, item.user);
       }
       
       // 3. 等待显示结束 (加一点缓冲)
@@ -1235,6 +1400,38 @@ class FlowRadioApp {
         }, '*');
         
         console.log('[Settings] 📤 Sent toggle-panel message');
+      });
+    }
+
+    // 音量滑块监听
+    const hostVolumeSlider = document.getElementById('host-volume-slider');
+    const hostVolumeValue = document.getElementById('host-volume-value');
+    if (hostVolumeSlider && hostVolumeValue) {
+      hostVolumeSlider.addEventListener('input', (e) => {
+        const val = parseInt(e.target.value);
+        this.hostVolume = val / 100;
+        hostVolumeValue.textContent = val + '%';
+        // 尝试发送音量给 Live2D (如果支持)
+        const iframe = document.getElementById('live2d-frame');
+        if (iframe && iframe.contentWindow) {
+            iframe.contentWindow.postMessage({
+                type: 'live2d-set-volume',
+                data: { volume: this.hostVolume }
+            }, '*');
+        }
+      });
+    }
+
+    const musicVolumeSlider = document.getElementById('music-volume-slider');
+    const musicVolumeValue = document.getElementById('music-volume-value');
+    if (musicVolumeSlider && musicVolumeValue) {
+      musicVolumeSlider.addEventListener('input', (e) => {
+        const val = parseInt(e.target.value);
+        this.musicVolume = val / 100;
+        musicVolumeValue.textContent = val + '%';
+        if (this.musicGainNode) {
+            this.musicGainNode.gain.setTargetAtTime(this.musicVolume, this.audioContext.currentTime, 0.1);
+        }
       });
     }
 

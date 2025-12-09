@@ -1,113 +1,99 @@
-🔍 [DEBUG] 节点: title='输出', type='Message', content长度=918
+🔍 [DEBUG] 节点: title='(debug)音乐提示词', type='Message', content长度=438
+   Content: {"music_config":{"bpm":95,"brightness":0.5,"density":0.5,"guidance":0,"scale":"E_FLAT_MAJOR_C_MINOR","temperature":1},"reasoning":"用户明确需求爵士，核心选Swing Groove和爵士常用的Smooth Piano，调式用E♭大调（适配爵士风格），BPM95匹配经典爵士节奏","weighted_prompts":[{"text":"Jazz, Smooth Piano, Swing Groove","weight":1.3},{"text":"Warm Tones, Live Performance, Subdued Dynamics","weight":0.6}]}
+
+   Content: {"music_config":{"bpm":95,"brightness":0.5,"density":0.5,"guidance":0,"scale":"E_FLAT_MAJOR_C_MINOR","temperature":1},"reasoning":"用户明确需求爵士，核心选Swing Groove和爵士常用的Smooth Piano，调式用E♭大调（适配爵士风格），BPM95匹配经典爵士节奏","weighted_prompts":[{"text":"Jazz, Smooth Piano, Swing Groove","weight":1.3},{"text":"Warm Tones, Live Performance, Subdued Dynamics","weight":0.6}]}
+
+🔍 [DEBUG] 节点: title='输出', type='Message', content长度=499
    Content: {
-"host2":"听到你说“好悲伤”，心里像被一片软乎乎的云轻轻碰了一下——悲伤本来就是心里藏着的小情绪呀，不用急着推开它，也不用逼自己“快点好起来”。  
-
-如果愿意的话，能不能和我说说，今天这股悲伤是绕着哪件小事转呢？比如早上没赶上的那趟车？还是翻到旧照片时忽然冒出来的想念？哪怕只是“今天风有点凉，吹得鼻子酸”，我都在这儿认真听着。  
-
-刚才导播悄悄递来一杯热可可，说“给屏幕那头的朋友留一口温度”——你看，就算悲伤裹着你，也总有人偷偷给你递暖呀。慢慢来，我陪着你。",
-  "tts":"https://lf9-appstore-sign.oceancloudapi.com/ocean-cloud-tos/VolcanoUserVoice/speech_7426720361753903141_9ddbcbcb-4c58-4a17-b1da-c90bf93f3bb0.mp3?lk3s=da27ec82&x-expires=1765431447&x-signature=6nd4x1Az6zWOnf06kjvdogTzn%2BQ%3D"
+"host2":"好嘞，没问题！这就为你安排上慵懒又有质感的爵士时光～马上切换到爵士频道，先带来一首大家熟悉的诺拉·琼斯经典《Don't Know Why》，跟着萨克斯的温柔旋律，放松享受此刻的惬意吧🎷✨",
+  "tts":"https://lf6-appstore-sign.oceancloudapi.com/ocean-cloud-tos/VolcanoUserVoice/speech_7426720361753903141_5ed71f97-d9a8-4fdf-a989-ebbb5dc65bb5.mp3?lk3s=da27ec82&x-expires=1765462785&x-signature=k539zonyy6k2FR2g7bMM3XPLJlk%3D"
 }
 
    Content: {
-"host2":"听到你说“好悲伤”，心里像被一片软乎乎的云轻轻碰了一下——悲伤本来就是心里藏着的小情绪呀，不用急着推开它，也不用逼自己“快点好起来”。  
-
-如果愿意的话，能不能和我说说，今天这股悲伤是绕着哪件小事转呢？比如早上没赶上的那趟车？还是翻到旧照片时忽然冒出来的想念？哪怕只是“今天风有点凉，吹得鼻子酸”，我都在这儿认真听着。  
-
-刚才导播悄悄递来一杯热可可，说“给屏幕那头的朋友留一口温度”——你看，就算悲伤裹着你，也总有人偷偷给你递暖呀。慢慢来，我陪着你。",
-  "tts":"https://lf9-appstore-sign.oceancloudapi.com/ocean-cloud-tos/VolcanoUserVoice/speech_7426720361753903141_9ddbcbcb-4c58-4a17-b1da-c90bf93f3bb0.mp3?lk3s=da27ec82&x-expires=1765431447&x-signature=6nd4x1Az6zWOnf06kjvdogTzn%2BQ%3D"
+"host2":"好嘞，没问题！这就为你安排上慵懒又有质感的爵士时光～马上切换到爵士频道，先带来一首大家熟悉的诺拉·琼斯经典《Don't Know Why》，跟着萨克斯的温柔旋律，放松享受此刻的惬意吧🎷✨",
+  "tts":"https://lf6-appstore-sign.oceancloudapi.com/ocean-cloud-tos/VolcanoUserVoice/speech_7426720361753903141_5ed71f97-d9a8-4fdf-a989-ebbb5dc65bb5.mp3?lk3s=da27ec82&x-expires=1765462785&x-signature=k539zonyy6k2FR2g7bMM3XPLJlk%3D"
 }
 
-🔍 [DEBUG] 节点: title='(debug)音乐提示词', type='Message', content长度=494
-   Content: {"music_config":{"bpm":65,"brightness":0.3,"density":0.2,"guidance":0,"scale":"F_MAJOR_D_MINOR","temperature":0.8},"reasoning":"用户表达悲伤情绪，选择慢节奏（65BPM）、稀疏音符密度（0.2）的钢琴+大提琴组合，用忧郁、深情的描述词，低亮度（0.3）营造深沉氛围，符合悲伤场景需求","weighted_prompts":[{"text":"Piano Solo, Melancholic, Slow Tempo, Soulful","weight":1.4},{"text":"Cello, Ethereal Ambience, Sustained Chords","weight":0.7}]}
-
-   Content: {"music_config":{"bpm":65,"brightness":0.3,"density":0.2,"guidance":0,"scale":"F_MAJOR_D_MINOR","temperature":0.8},"reasoning":"用户表达悲伤情绪，选择慢节奏（65BPM）、稀疏音符密度（0.2）的钢琴+大提琴组合，用忧郁、深情的描述词，低亮度（0.3）营造深沉氛围，符合悲伤场景需求","weighted_prompts":[{"text":"Piano Solo, Melancholic, Slow Tempo, Soulful","weight":1.4},{"text":"Cello, Ethereal Ambience, Sustained Chords","weight":0.7}]}
-
-🔍 [DEBUG] 节点: title='评论', type='Message', content长度=960
+🔍 [DEBUG] 节点: title='评论', type='Message', content长度=711
    Content: {
-  "s1": "慢节奏好催泪，钢琴声太深情了。",
-  "s2": "大提琴一响，悲伤氛围直接拉满！",
-  "s3": "这组合搭配绝了，忧郁感太到位。",
-  "l1": "当舒缓的钢琴声缓缓响起，仿佛是一位老友在耳边轻声诉说着心底的哀愁。每一个音符都带着深沉的情感，如同夜空中闪烁的星辰，虽微弱却能照亮内心的黑暗角落。紧接着，大提琴那醇厚、空灵的声音加入进来，如同微风拂过湖面，泛起层层涟漪，让悲伤的情绪在空气中弥漫开来。这种慢节奏、稀疏音符密度的搭配，就像是一场心灵的洗礼，让人沉浸在这忧郁、深情的氛围中，忘却了外界的喧嚣与烦恼，只专注于内心那份难以言说的悲伤。它不仅仅是一首音乐，更是一种情感的寄托，能让每一个经历过悲伤的人找到共鸣，在音乐中释放自己的情绪，感受那份独特的宁静与安慰。"
+  "s1": "95的BPM，经典爵士节奏太带感啦！",
+  "s2": "E♭大调配上平滑钢琴，韵味十足！",
+  "s3": "这暖色调的爵士，现场感满满！",
+  "l1": "当听到这充满爵士风情的音乐，仿佛置身于热闹却又不失优雅的爵士酒吧。95的BPM如同沉稳的心跳，带动着经典的节奏，让人忍不住随之摇摆。E♭大调的运用，为音乐增添了独特的色彩，适配着爵士风格的随性与自由。平滑钢琴的音色，如潺潺流水般细腻，与摇摆节奏完美融合。暖色调的氛围营造出温馨的感觉，让人仿佛能看到现场演奏者投入的模样，沉浸在这美妙的音乐世界中，忘却一切烦恼。"
 }
 
 
    Content: {
-  "s1": "慢节奏好催泪，钢琴声太深情了。",
-  "s2": "大提琴一响，悲伤氛围直接拉满！",
-  "s3": "这组合搭配绝了，忧郁感太到位。",
-  "l1": "当舒缓的钢琴声缓缓响起，仿佛是一位老友在耳边轻声诉说着心底的哀愁。每一个音符都带着深沉的情感，如同夜空中闪烁的星辰，虽微弱却能照亮内心的黑暗角落。紧接着，大提琴那醇厚、空灵的声音加入进来，如同微风拂过湖面，泛起层层涟漪，让悲伤的情绪在空气中弥漫开来。这种慢节奏、稀疏音符密度的搭配，就像是一场心灵的洗礼，让人沉浸在这忧郁、深情的氛围中，忘却了外界的喧嚣与烦恼，只专注于内心那份难以言说的悲伤。它不仅仅是一首音乐，更是一种情感的寄托，能让每一个经历过悲伤的人找到共鸣，在音乐中释放自己的情绪，感受那份独特的宁静与安慰。"
+  "s1": "95的BPM，经典爵士节奏太带感啦！",
+  "s2": "E♭大调配上平滑钢琴，韵味十足！",
+  "s3": "这暖色调的爵士，现场感满满！",
+  "l1": "当听到这充满爵士风情的音乐，仿佛置身于热闹却又不失优雅的爵士酒吧。95的BPM如同沉稳的心跳，带动着经典的节奏，让人忍不住随之摇摆。E♭大调的运用，为音乐增添了独特的色彩，适配着爵士风格的随性与自由。平滑钢琴的音色，如潺潺流水般细腻，与摇摆节奏完美融合。暖色调的氛围营造出温馨的感觉，让人仿佛能看到现场演奏者投入的模样，沉浸在这美妙的音乐世界中，忘却一切烦恼。"
 }
 
 
-🔍 [DEBUG] 节点: title='reply', type='Message', content长度=1364
+🔍 [DEBUG] 节点: title='reply', type='Message', content长度=1319
    Content: {
-  "r1": "没错，慢节奏和深情钢琴声特别适合催泪，很容易让人沉浸其中。",
-  "r2": "确实，大提琴的音色一出来，悲伤感立马就有了，太绝啦。",
-  "r3": "可不是嘛，这搭配营造出的忧郁氛围恰到好处，太有感觉了。",
-  "r4": "你描述得太细腻了，完全把这音乐带来的情感体验描绘出来了，让人更能感同身受。",
-  "link1": "https://lf26-appstore-sign.oceancloudapi.com/ocean-cloud-tos/VolcanoUserVoice/speech_7426720361753903141_9e33d79a-2048-4ea4-b013-8ddeda44daee.mp3?lk3s=da27ec82&x-expires=1765431461&x-signature=eO0BMOOXC49gNdZ1JT2NyVOIzPM%3D",
-  "link2": "https://lf26-appstore-sign.oceancloudapi.com/ocean-cloud-tos/VolcanoUserVoice/speech_7426720361753903141_d748d0a2-966d-4a64-900c-3848707ce24d.mp3?lk3s=da27ec82&x-expires=1765431461&x-signature=xaVzzV%2FH6%2Fld6fTx636FbxEVPxA%3D",
-  "link3": "https://lf9-appstore-sign.oceancloudapi.com/ocean-cloud-tos/VolcanoUserVoice/speech_7426720361753903141_55387239-f8ee-4c8e-84e2-7e0aa2e5b8ce.mp3?lk3s=da27ec82&x-expires=1765431461&x-signature=U09FfzuD%2Bn3noAuOSPhXuE43a6I%3D",
-  "link4": "https://lf6-appstore-sign.oceancloudapi.com/ocean-cloud-tos/VolcanoUserVoice/speech_7426720361753903141_84f2ab0a-0425-41a8-9a1a-591eb0cbb539.mp3?lk3s=da27ec82&x-expires=1765431461&x-signature=lvWIw8x7lP8DImWxtzPHDQJRAMk%3D"
+  "r1": "是啊，这节奏配上BPM，活力和优雅并存，越听越上头！",
+  "r2": "没错，E♭大调和平滑钢琴搭配，那独特韵味直接拉满！",
+  "r3": "现场感确实绝了，感觉自己都在酒吧跟着节奏微醺了！",
+  "r4": "你形容得太到位了！这音乐就像有魔力，让人完全陶醉，身心都放松啦。",
+  "link1": "https://lf6-appstore-sign.oceancloudapi.com/ocean-cloud-tos/VolcanoUserVoice/speech_7426720361753903141_cc161667-5cf2-4690-a64f-ed09a7b67d40.mp3?lk3s=da27ec82&x-expires=1765462796&x-signature=qoaRsLwH8uWXWqRBLxrDGwDxIhQ%3D",
+  "link2": "https://lf9-appstore-sign.oceancloudapi.com/ocean-cloud-tos/VolcanoUserVoice/speech_7426720361753903141_6188d5f4-f58e-4dc1-9290-e38554b99c67.mp3?lk3s=da27ec82&x-expires=1765462796&x-signature=4Pdp62%2FulZJVCIGW2i4nx4Byuco%3D",
+  "link3": "https://lf26-appstore-sign.oceancloudapi.com/ocean-cloud-tos/VolcanoUserVoice/speech_7426720361753903141_b73c7ca4-fdb0-45bb-b030-7390846ade16.mp3?lk3s=da27ec82&x-expires=1765462796&x-signature=xwPEVJe0NCXxrKFy1hqRscXbxFY%3D",
+  "link4": "https://lf9-appstore-sign.oceancloudapi.com/ocean-cloud-tos/VolcanoUserVoice/speech_7426720361753903141_193aff03-ae76-45ae-85d6-322067db8741.mp3?lk3s=da27ec82&x-expires=1765462796&x-signature=Ohpn4fqQgH6FZuL%2B9lBPAxE%2BBkA%3D"
 }
 
 
    Content: {
-  "r1": "没错，慢节奏和深情钢琴声特别适合催泪，很容易让人沉浸其中。",
-  "r2": "确实，大提琴的音色一出来，悲伤感立马就有了，太绝啦。",
-  "r3": "可不是嘛，这搭配营造出的忧郁氛围恰到好处，太有感觉了。",
-  "r4": "你描述得太细腻了，完全把这音乐带来的情感体验描绘出来了，让人更能感同身受。",
-  "link1": "https://lf26-appstore-sign.oceancloudapi.com/ocean-cloud-tos/VolcanoUserVoice/speech_7426720361753903141_9e33d79a-2048-4ea4-b013-8ddeda44daee.mp3?lk3s=da27ec82&x-expires=1765431461&x-signature=eO0BMOOXC49gNdZ1JT2NyVOIzPM%3D",
-  "link2": "https://lf26-appstore-sign.oceancloudapi.com/ocean-cloud-tos/VolcanoUserVoice/speech_7426720361753903141_d748d0a2-966d-4a64-900c-3848707ce24d.mp3?lk3s=da27ec82&x-expires=1765431461&x-signature=xaVzzV%2FH6%2Fld6fTx636FbxEVPxA%3D",
-  "link3": "https://lf9-appstore-sign.oceancloudapi.com/ocean-cloud-tos/VolcanoUserVoice/speech_7426720361753903141_55387239-f8ee-4c8e-84e2-7e0aa2e5b8ce.mp3?lk3s=da27ec82&x-expires=1765431461&x-signature=U09FfzuD%2Bn3noAuOSPhXuE43a6I%3D",
-  "link4": "https://lf6-appstore-sign.oceancloudapi.com/ocean-cloud-tos/VolcanoUserVoice/speech_7426720361753903141_84f2ab0a-0425-41a8-9a1a-591eb0cbb539.mp3?lk3s=da27ec82&x-expires=1765431461&x-signature=lvWIw8x7lP8DImWxtzPHDQJRAMk%3D"
+  "r1": "是啊，这节奏配上BPM，活力和优雅并存，越听越上头！",
+  "r2": "没错，E♭大调和平滑钢琴搭配，那独特韵味直接拉满！",
+  "r3": "现场感确实绝了，感觉自己都在酒吧跟着节奏微醺了！",
+  "r4": "你形容得太到位了！这音乐就像有魔力，让人完全陶醉，身心都放松啦。",
+  "link1": "https://lf6-appstore-sign.oceancloudapi.com/ocean-cloud-tos/VolcanoUserVoice/speech_7426720361753903141_cc161667-5cf2-4690-a64f-ed09a7b67d40.mp3?lk3s=da27ec82&x-expires=1765462796&x-signature=qoaRsLwH8uWXWqRBLxrDGwDxIhQ%3D",
+  "link2": "https://lf9-appstore-sign.oceancloudapi.com/ocean-cloud-tos/VolcanoUserVoice/speech_7426720361753903141_6188d5f4-f58e-4dc1-9290-e38554b99c67.mp3?lk3s=da27ec82&x-expires=1765462796&x-signature=4Pdp62%2FulZJVCIGW2i4nx4Byuco%3D",
+  "link3": "https://lf26-appstore-sign.oceancloudapi.com/ocean-cloud-tos/VolcanoUserVoice/speech_7426720361753903141_b73c7ca4-fdb0-45bb-b030-7390846ade16.mp3?lk3s=da27ec82&x-expires=1765462796&x-signature=xwPEVJe0NCXxrKFy1hqRscXbxFY%3D",
+  "link4": "https://lf9-appstore-sign.oceancloudapi.com/ocean-cloud-tos/VolcanoUserVoice/speech_7426720361753903141_193aff03-ae76-45ae-85d6-322067db8741.mp3?lk3s=da27ec82&x-expires=1765462796&x-signature=Ohpn4fqQgH6FZuL%2B9lBPAxE%2BBkA%3D"
 }
 
 
-🔍 [DEBUG] 节点: title='主持人1输出', type='Message', content长度=1856
+🔍 [DEBUG] 节点: title='主持人1输出', type='Message', content长度=1891
    Content: {
-"host1":"（轻柔的背景音渐起，主持人的声音带着温暖的共情，语速缓慢而舒缓）  
+"host1":"Hey there, friends—thanks for locking in to [Your Radio Station Name], I’m [Your Host Name], and right now, we’re slipping into a cozy, sun-dappled corner of jazz that feels like a warm hug.  
 
-亲爱的听众朋友，晚上好。  
+Let me paint the picture for you: imagine a tiny, dimly lit club—wooden tables, the faint hum of conversation, and a piano player whose fingers glide over the keys like they’re whispering secrets. That’s the vibe we’re serving up next. This track leads with a smooth piano melody that wraps around you, paired with a gentle Swing Groove that’s just tight enough to make your foot tap softy (no need to rush—we’re taking our time here).  
 
-我知道，有些时刻，悲伤像细密的雨丝，悄悄落在心头——不是滂沱的泪，而是那种轻轻的、挥之不去的沉郁，像握不住的月光，又像藏在衣角的褶皱。没关系，今晚，我们不用急着说“没关系”，就让音乐陪你，慢慢接住这份情绪。  
+It’s in E♭ major, a key jazz folks swear by for its warm, familiar glow—like the first sip of a well-brewed coffee on a lazy morning. At 95 BPM, it’s the perfect pace: not too fast to feel chaotic, not too slow to drag—just a steady, easy sway that lets you sink into the moment.  
 
-接下来要送给你的这首曲子，是我们为此刻的你量身定制的：65拍的慢节奏，让时光在这里温柔地放缓脚步；稀疏的音符密度，像你心里那些未曾说出口的留白，每一声都落在最柔软的地方。钢琴的指尖轻触琴键，带着忧郁却深情的质感，每一个旋律都像你眼底轻轻的叹息；而大提琴低沉的呢喃，伴着空灵的氛围与绵长的和弦，像一位沉默的知己，用它温暖的音色，包裹住你所有的不安与怅惘。  
+The tones are rich and warm, the dynamics subdued—like a live performance where every note feels intentional, intimate, like it’s just for you. No flashy solos, no loud crashes—just pure, unhurried jazz magic.  
 
-低饱和度的音乐亮度，就像傍晚时分渐渐暗下来的天空，不刺眼，却足够让你看清自己内心的模样。没有刻意的安慰，只有灵魂深处的共鸣——就像此刻，我在这里，你在那里，而音乐，在我们之间搭起一座桥。  
+So go ahead: kick your feet up, adjust that blanket, or just lean back in your chair. Let this one wash over you. Here it is—your smooth piano swing in E♭ major. Enjoy.  
 
-现在，请你轻轻闭上眼，让钢琴与大提琴的对话，慢慢淌过你的耳畔。愿这旋律，能成为你今晚最温柔的枕头。  
+[Pause for music fade-in]  
 
-（音乐缓缓响起）  
+*[Music begins]*  
+  
 
-——请听这首《未说出口的温柔》。  
-
-（声音渐弱，融入音乐中）  
-
-（注：曲名可根据氛围调整，此处为贴合情绪的拟名）",
-  "tts":"https://lf26-appstore-sign.oceancloudapi.com/ocean-cloud-tos/VolcanoUserVoice/speech_7426720361753903141_18a8b12e-5198-4617-a650-b8b92de0c5c7.mp3?lk3s=da27ec82&x-expires=1765431477&x-signature=KFqDA9ez7DmVCcTmvd3zept0HIs%3D"
+(Note: Feel free to fill in [Your Radio Station Name] and [Your Host Name] with your preferred details—this script balances conversational warmth with all the key musical elements from your config, keeping it authentic to a radio host’s voice.)",
+  "tts":"https://lf3-appstore-sign.oceancloudapi.com/ocean-cloud-tos/VolcanoUserVoice/speech_7426720361753903141_d9e51f32-6017-499c-a220-d644af0b8b66.mp3?lk3s=da27ec82&x-expires=1765462834&x-signature=Qe%2F0zmaJzLmkk5DFBWT4LDallEA%3D"
 }
 
    Content: {
-"host1":"（轻柔的背景音渐起，主持人的声音带着温暖的共情，语速缓慢而舒缓）  
+"host1":"Hey there, friends—thanks for locking in to [Your Radio Station Name], I’m [Your Host Name], and right now, we’re slipping into a cozy, sun-dappled corner of jazz that feels like a warm hug.  
 
-亲爱的听众朋友，晚上好。  
+Let me paint the picture for you: imagine a tiny, dimly lit club—wooden tables, the faint hum of conversation, and a piano player whose fingers glide over the keys like they’re whispering secrets. That’s the vibe we’re serving up next. This track leads with a smooth piano melody that wraps around you, paired with a gentle Swing Groove that’s just tight enough to make your foot tap softy (no need to rush—we’re taking our time here).  
 
-我知道，有些时刻，悲伤像细密的雨丝，悄悄落在心头——不是滂沱的泪，而是那种轻轻的、挥之不去的沉郁，像握不住的月光，又像藏在衣角的褶皱。没关系，今晚，我们不用急着说“没关系”，就让音乐陪你，慢慢接住这份情绪。  
+It’s in E♭ major, a key jazz folks swear by for its warm, familiar glow—like the first sip of a well-brewed coffee on a lazy morning. At 95 BPM, it’s the perfect pace: not too fast to feel chaotic, not too slow to drag—just a steady, easy sway that lets you sink into the moment.  
 
-接下来要送给你的这首曲子，是我们为此刻的你量身定制的：65拍的慢节奏，让时光在这里温柔地放缓脚步；稀疏的音符密度，像你心里那些未曾说出口的留白，每一声都落在最柔软的地方。钢琴的指尖轻触琴键，带着忧郁却深情的质感，每一个旋律都像你眼底轻轻的叹息；而大提琴低沉的呢喃，伴着空灵的氛围与绵长的和弦，像一位沉默的知己，用它温暖的音色，包裹住你所有的不安与怅惘。  
+The tones are rich and warm, the dynamics subdued—like a live performance where every note feels intentional, intimate, like it’s just for you. No flashy solos, no loud crashes—just pure, unhurried jazz magic.  
 
-低饱和度的音乐亮度，就像傍晚时分渐渐暗下来的天空，不刺眼，却足够让你看清自己内心的模样。没有刻意的安慰，只有灵魂深处的共鸣——就像此刻，我在这里，你在那里，而音乐，在我们之间搭起一座桥。  
+So go ahead: kick your feet up, adjust that blanket, or just lean back in your chair. Let this one wash over you. Here it is—your smooth piano swing in E♭ major. Enjoy.  
 
-现在，请你轻轻闭上眼，让钢琴与大提琴的对话，慢慢淌过你的耳畔。愿这旋律，能成为你今晚最温柔的枕头。  
+[Pause for music fade-in]  
 
-（音乐缓缓响起）  
+*[Music begins]*  
+  
 
-——请听这首《未说出口的温柔》。  
-
-（声音渐弱，融入音乐中）  
-
-（注：曲名可根据氛围调整，此处为贴合情绪的拟名）",
-  "tts":"https://lf26-appstore-sign.oceancloudapi.com/ocean-cloud-tos/VolcanoUserVoice/speech_7426720361753903141_18a8b12e-5198-4617-a650-b8b92de0c5c7.mp3?lk3s=da27ec82&x-expires=1765431477&x-signature=KFqDA9ez7DmVCcTmvd3zept0HIs%3D"
+(Note: Feel free to fill in [Your Radio Station Name] and [Your Host Name] with your preferred details—this script balances conversational warmth with all the key musical elements from your config, keeping it authentic to a radio host’s voice.)",
+  "tts":"https://lf3-appstore-sign.oceancloudapi.com/ocean-cloud-tos/VolcanoUserVoice/speech_7426720361753903141_d9e51f32-6017-499c-a220-d644af0b8b66.mp3?lk3s=da27ec82&x-expires=1765462834&x-signature=Qe%2F0zmaJzLmkk5DFBWT4LDallEA%3D"
 }
 
