@@ -1,0 +1,38 @@
+{
+  "打气": {
+    "kind": "motion",
+    "name": "mtn_02"
+  },
+  "摇动": {
+    "kind": "motion",
+    "name": "mtn_03"
+  },
+  "扶帽子": {
+    "kind": "motion",
+    "name": "mtn_04"
+  },
+  "比心": {
+    "kind": "motion",
+    "name": "special_01"
+  },
+  "眼睛发光": {
+    "kind": "expression",
+    "name": "f01"
+  },
+  "好奇": {
+    "kind": "expression",
+    "name": "f02"
+  },
+  "高兴": {
+    "kind": "expression",
+    "name": "f03"
+  },
+  "可爱": {
+    "kind": "expression",
+    "name": "f04"
+  },
+  "微笑": {
+    "kind": "expression",
+    "name": "f01"
+  }
+}

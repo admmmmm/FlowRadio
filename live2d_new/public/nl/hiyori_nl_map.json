@@ -1,0 +1,22 @@
+{
+  "眼睛发光": {
+    "kind": "expression",
+    "name": "f01"
+  },
+  "好奇": {
+    "kind": "expression",
+    "name": "f02"
+  },
+  "高兴": {
+    "kind": "expression",
+    "name": "f03"
+  },
+  "可爱": {
+    "kind": "expression",
+    "name": "f04"
+  },
+  "微笑": {
+    "kind": "expression",
+    "name": "f01"
+  }
+}

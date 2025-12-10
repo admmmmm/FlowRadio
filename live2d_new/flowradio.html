@@ -1,0 +1,175 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <title>FlowRadio Live2D</title>
+  <style>
+    body { 
+      margin: 0; 
+      overflow: hidden; 
+      background: transparent; 
+    }
+    canvas { 
+      display: block; 
+      width: 100vw; 
+      height: 100vh; 
+    }
+    /* Panel 开关按钮 */
+    #panel-toggle {
+      position: fixed;
+      right: 10px;
+      bottom: 10px;
+      background: rgba(0, 0, 0, 0.7);
+      color: white;
+      border: 1px solid #00ff88;
+      padding: 8px 15px;
+      border-radius: 5px;
+      cursor: pointer;
+      font-size: 12px;
+      font-family: monospace;
+      z-index: 99999;
+      user-select: none;
+    }
+    #panel-toggle:hover {
+      background: rgba(0, 255, 136, 0.2);
+    }
+  </style>
+</head>
+<body>
+  <canvas id="canvas"></canvas>
+  <button id="panel-toggle">Panel: OFF</button>
+  
+  <script src="/Core/live2dcubismcore.js"></script>
+  <script type="module">
+    // ✅ 禁用自动初始化,使用手动控制
+    window.LIVE2D_AUTO_INIT = false;
+    
+    import { togglePanel, getPanelState } from '/src/main.js';
+    import { initLive2dWithDialogue } from '/src/dialog-api.js';
+    
+    // ✅ 全局say函数,供message监听器使用
+    let globalSay = null;
+
+    // ⭐ 监听父窗口的消息 - 必须在脚本加载时立即注册
+    window.addEventListener('message', async (event) => {
+      console.log('[iframe] 📨 收到postMessage:', event.data);
+      const { type, data } = event.data;
+      
+      if (type === 'live2d-say') {
+        console.log('[iframe] 🎯 处理live2d-say, data:', data);
+        console.log('[iframe] globalSay状态:', globalSay ? '已初始化✅' : '未初始化❌');
+        try {
+          if (!globalSay) {
+            console.error('[Live2D] ❌ globalSay未初始化,消息将被忽略');
+            return;
+          }
+          console.log('[iframe] 📢 开始调用globalSay...');
+          const result = await globalSay(data);
+          console.log('[iframe] ✅ globalSay调用成功, result:', result);
+          
+          window.parent?.postMessage({
+            type: 'live2d-say-result',
+            success: true,
+            result: result
+          }, '*');
+        } catch (error) {
+          console.error('[Live2D] ❌ Say failed:', error);
+          window.parent?.postMessage({
+            type: 'live2d-say-result',
+            success: false,
+            error: error.message
+          }, '*');
+        }
+      } else if (type === 'toggle-panel') {
+        const visible = togglePanel();
+        updatePanelButton(visible);
+        
+        window.parent?.postMessage({
+          type: 'panel-toggled',
+          visible: visible,
+          state: getPanelState()
+        }, '*');
+      } else if (type === 'live2d-ping') {
+        // 响应 ping 消息
+        if (globalSay) {
+            window.parent?.postMessage({ type: 'live2d-ready', timestamp: Date.now() }, '*');
+        }
+      }
+    });
+
+    // 初始化 Live2D
+    async function init() {
+      try {
+        const { controller, say } = await initLive2dWithDialogue({
+          canvasId: 'canvas',
+          characterConfigs: [
+            { 
+              id: 'hiyori', 
+              modelJsonUrl: '/live2d/hiyori/hiyori_pro_t11.model3.json', 
+              scale: 0.2, 
+              position: { xOffset: -300, yRatio: 0.85 } 
+            },
+            { 
+              id: 'mao', 
+              modelJsonUrl: '/live2d/mao/mao_pro.model3.json', 
+              scale: 0.1,
+              position: { xOffset: 300, yRatio: 0.85 }
+            }
+          ],
+          persist: true,
+          enablePanel: false
+        });
+
+        // 设置为自然语言模式
+        controller.setMode('hiyori', 2);
+        controller.setMode('mao', 2);
+
+        // 暴露到全局
+        window.live2dController = controller;
+        window.say = say;
+        globalSay = say;
+        
+        console.log('[Live2D] ✅ Initialized');
+        
+        // 通知父窗口
+        if (window.parent !== window) {
+          window.parent.postMessage({ 
+            type: 'live2d-ready',
+            timestamp: Date.now()
+          }, '*');
+        }
+
+        // Panel按钮功能
+        setupPanelToggle();      } catch (error) {
+        console.error('[Live2D] Initialization failed:', error);
+      }
+    }
+
+    // Panel按钮控制
+    function setupPanelToggle() {
+      const toggleBtn = document.getElementById('panel-toggle');
+      
+      toggleBtn.addEventListener('click', () => {
+        const visible = togglePanel();
+        updatePanelButton(visible);
+      });
+
+      const state = getPanelState();
+      updatePanelButton(state.visible);
+    }
+
+    function updatePanelButton(visible) {
+      const toggleBtn = document.getElementById('panel-toggle');
+      toggleBtn.textContent = `Panel: ${visible ? 'ON' : 'OFF'}`;
+      toggleBtn.style.borderColor = visible ? '#ff0088' : '#00ff88';
+    }
+
+    // 页面加载后初始化
+    if (document.readyState === 'loading') {
+      document.addEventListener('DOMContentLoaded', init);
+    } else {
+      init();
+    }
+  </script>
+</body>
+</html>
