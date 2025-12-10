@@ -9,6 +9,7 @@ import (
 	"os"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/gorilla/websocket"
 )
@@ -123,7 +124,12 @@ func (m *WSClientManager) HandleWebSocket(globalState *GlobalState) http.Handler
 							if u, ok := data["username"].(string); ok && u != "" {
 								username = u
 							}
-							go globalState.handleUserInput(text, username)
+							// 提取 chatTrigger (默认为 false)
+							chatTrigger := false
+							if ct, ok := data["chatTrigger"].(bool); ok {
+								chatTrigger = ct
+							}
+							go globalState.handleUserInput(text, username, chatTrigger)
 						}
 					}
 				}
@@ -134,14 +140,29 @@ func (m *WSClientManager) HandleWebSocket(globalState *GlobalState) http.Handler
 						go globalState.handleMusicUpdate(data)
 					}
 				}
+
+				// 处理前端转发的弹幕总结 (DANMU_SUMMARY)
+				if msg["type"] == "DANMU_SUMMARY" {
+					if data, ok := msg["data"].(map[string]interface{}); ok {
+						if text, ok := data["text"].(string); ok {
+							username := "弹幕分析师"
+							if u, ok := data["username"].(string); ok && u != "" {
+								username = u
+							}
+							log.Printf("📥 收到前端转发的弹幕总结: %s (User: %s)", text, username)
+							// 强制触发 Coze 工作流
+							go globalState.handleUserInputWithCoze(text, username, true)
+						}
+					}
+				}
 			}
 		}()
 	}
 }
 
 // 处理用户输入 (优先使用 Coze 工作流)
-func (g *GlobalState) handleUserInput(userText string, username string) {
-	log.Printf("📥 收到用户输入: %s (User: %s)", userText, username)
+func (g *GlobalState) handleUserInput(userText string, username string, chatTrigger bool) {
+	log.Printf("📥 收到用户输入: %s (User: %s, ChatTrigger: %v)", userText, username, chatTrigger)
 
 	// 检查是否启用 Coze
 	cozeToken := os.Getenv("COZE_API_TOKEN")
@@ -150,7 +171,7 @@ func (g *GlobalState) handleUserInput(userText string, username string) {
 	if useCoze {
 		// 使用 Coze 工作流
 		log.Println("🎯 使用 Coze 工作流处理请求")
-		g.handleUserInputWithCoze(userText, username)
+		g.handleUserInputWithCoze(userText, username, chatTrigger)
 	} else {
 		// 回退到传统 LLM
 		log.Println("🔄 使用传统 LLM 处理请求")
@@ -159,7 +180,7 @@ func (g *GlobalState) handleUserInput(userText string, username string) {
 }
 
 // 使用 Coze 工作流处理用户输入
-func (g *GlobalState) handleUserInputWithCoze(userText string, username string) {
+func (g *GlobalState) handleUserInputWithCoze(userText string, username string, chatTrigger bool) {
 	client := NewCozeClient()
 
 	var hasStreamedMessages bool // 标记是否已通过流式发送过消息
@@ -337,19 +358,41 @@ func (g *GlobalState) handleUserInputWithCoze(userText string, username string) 
 
 				// Determine Speaker
 				prefix := "Baobab: "
+				isTopic := false
+				
 				if strings.Contains(title, "Acacia") || strings.Contains(title, "输出_1") {
-					prefix = "Mao: "
+					if strings.HasPrefix(script, "topic：") || strings.HasPrefix(script, "topic:") {
+						// 处理 topic 输出
+						isTopic = true
+						script = strings.TrimPrefix(script, "topic：")
+						script = strings.TrimPrefix(script, "topic:")
+						script = strings.TrimSpace(script)
+					} else {
+						prefix = "Mao: "
+					}
 				}
 				
 				// Send if we have content
 				if script != "" {
-					fullScript := prefix + script
-					log.Printf("🌊 [Stream] 发送流式消息: %s... (TTS: %v)", fullScript[:min(20, len(fullScript))], ttsUrl != "")
-					g.WSManager.BroadcastMessage("HOST_MESSAGE", map[string]interface{}{
-						"script":  fullScript,
-						"tts_url": ttsUrl,
-						"source":  "Coze Stream",
-					})
+					// 更新上次说话时间
+					g.HostState.mu.Lock()
+					g.HostState.LastSpeakTime = time.Now()
+					g.HostState.mu.Unlock()
+
+					if isTopic {
+						log.Printf("🌊 [Stream] 发送 Topic 消息: %s", script)
+						g.WSManager.BroadcastMessage("TOPIC_CHANGE", map[string]interface{}{
+							"topic": script,
+						})
+					} else {
+						fullScript := prefix + script
+						log.Printf("🌊 [Stream] 发送流式消息: %s... (TTS: %v)", fullScript[:min(20, len(fullScript))], ttsUrl != "")
+						g.WSManager.BroadcastMessage("HOST_MESSAGE", map[string]interface{}{
+							"script":  fullScript,
+							"tts_url": ttsUrl,
+							"source":  "Coze Stream",
+						})
+					}
 					hasStreamedMessages = true
 				}
 			}
@@ -362,6 +405,7 @@ func (g *GlobalState) handleUserInputWithCoze(userText string, username string) 
 		username,
 		"用户在线听歌。Host1负责对音乐做出评论，Host2负责回复弹幕。", // 上下文
 		true,           // 启用气氛组
+		chatTrigger,    // Chat_trigger (由调用方决定)
 		streamCallback, // 传入回调
 	)
 
@@ -378,28 +422,49 @@ func (g *GlobalState) handleUserInputWithCoze(userText string, username string) 
 	// 1. 广播主持人播报 (包含原始数据)
 	// 只有在没有流式发送过消息时，才发送汇总消息
 	if !hasStreamedMessages {
-		messageData := map[string]interface{}{
-			"script":  result.HostScript,
-			"tts_url": result.HostTTSURL,
-			"source":  "Coze Main工作流 (Aggregated)",
-		}
-		// 添加原始主持人输出数据供前端智能解析
-		if result.RawHostOutput != nil {
-			messageData["raw_host"] = result.RawHostOutput
-			log.Printf("📤 [环节2-发送数据] 准备发送HOST_MESSAGE: script='%s', tts_url='%s', raw_host=%+v", 
-				messageData["script"].(string)[:min(30, len(messageData["script"].(string)))], 
-				messageData["tts_url"].(string)[:min(50, len(messageData["tts_url"].(string)))], 
-				messageData["raw_host"])
+		// 更新上次说话时间
+		g.HostState.mu.Lock()
+		g.HostState.LastSpeakTime = time.Now()
+		g.HostState.mu.Unlock()
+
+		// 检查是否是 Topic 消息
+		if strings.HasPrefix(result.HostScript, "Topic: ") {
+			topicContent := strings.TrimPrefix(result.HostScript, "Topic: ")
+			log.Printf("📤 [环节2-发送数据] 发送 Topic 消息: %s", topicContent)
+			g.WSManager.BroadcastMessage("TOPIC_CHANGE", map[string]interface{}{
+				"topic": topicContent,
+			})
 		} else {
-			log.Printf("⚠️ [环节2-发送数据] RawHostOutput为nil,只发送script和tts_url")
+			messageData := map[string]interface{}{
+				"script":  result.HostScript,
+				"tts_url": result.HostTTSURL,
+				"action":  result.HostAction, // 传递动作
+				"source":  "Coze Main工作流 (Aggregated)",
+			}
+			// 添加原始主持人输出数据供前端智能解析
+			if result.RawHostOutput != nil {
+				messageData["raw_host"] = result.RawHostOutput
+				log.Printf("📤 [环节2-发送数据] 准备发送HOST_MESSAGE: script='%s', tts_url='%s', action='%s', raw_host=%+v", 
+					messageData["script"].(string)[:min(30, len(messageData["script"].(string)))], 
+					messageData["tts_url"].(string)[:min(50, len(messageData["tts_url"].(string)))], 
+					messageData["action"],
+					messageData["raw_host"])
+			} else {
+				log.Printf("⚠️ [环节2-发送数据] RawHostOutput为nil,只发送script和tts_url")
+			}
+			g.WSManager.BroadcastMessage("HOST_MESSAGE", messageData)
 		}
-		g.WSManager.BroadcastMessage("HOST_MESSAGE", messageData)
 	} else {
 		log.Printf("🌊 [Stream] 已通过流式发送消息，跳过发送汇总 HOST_MESSAGE")
 	}
 
 	// 2. 发送音乐参数到 Lyria
 	if result.MusicParams != nil {
+		// 更新上次音乐请求时间
+		g.HostState.mu.Lock()
+		g.HostState.LastMusicRequestTime = time.Now()
+		g.HostState.mu.Unlock()
+
 		// 转换为 map 以便发送
 		musicData := map[string]interface{}{
 			"music_config":      result.MusicParams.MusicConfig,
@@ -415,6 +480,11 @@ func (g *GlobalState) handleUserInputWithCoze(userText string, username string) 
 
 	// 3. 广播气氛组内容
 	if result.Atmosphere != nil {
+		// 气氛组说话也算说话
+		g.HostState.mu.Lock()
+		g.HostState.LastSpeakTime = time.Now()
+		g.HostState.mu.Unlock()
+
 		g.WSManager.BroadcastMessage("ATMOSPHERE", map[string]interface{}{
 			"comments":         result.Atmosphere.Comments,
 			"long_comment":     result.Atmosphere.LongComment,
@@ -500,9 +570,14 @@ func (g *GlobalState) handleUserInputWithLLM(userText string) {
 	}
 }
 
-// 处理 Coze 工作流的音乐更新请求
+	// 处理 Coze 工作流的音乐更新请求
 func (g *GlobalState) handleMusicUpdate(data map[string]interface{}) {
 	log.Printf("🎵 收到 Coze 音乐更新请求")
+
+	// 更新上次音乐请求时间
+	g.HostState.mu.Lock()
+	g.HostState.LastMusicRequestTime = time.Now()
+	g.HostState.mu.Unlock()
 
 	// 新格式: 直接传递完整的音乐参数给 Lyria
 	// data 包含: genre, instrument, mood, theme, bpm, duration 等

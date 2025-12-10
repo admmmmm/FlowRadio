@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"io"
 	"log"
@@ -10,6 +11,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/gorilla/websocket"
 	"github.com/joho/godotenv"
 )
 
@@ -23,10 +25,12 @@ const (
 
 // HostState 存储 DJ Brain 的当前状态
 type HostState struct {
-	Personality         string
-	CurrentGenre        string
-	ConversationHistory []map[string]string
-	mu                  sync.Mutex
+	Personality          string
+	CurrentGenre         string
+	ConversationHistory  []map[string]string
+	LastMusicRequestTime time.Time // 上次请求音乐的时间
+	LastSpeakTime        time.Time // 上次说话的时间
+	mu                   sync.Mutex
 }
 
 // GlobalState 全局状态
@@ -44,6 +48,10 @@ func main() {
 	if err := godotenv.Load("../.env"); err != nil {
 		log.Printf("⚠️ 未找到 .env 文件或加载失败: %v", err)
 	}
+	// 尝试加载 bili-coze-panel 下的 .env (覆盖前面的配置)
+	if err := godotenv.Overload("../bili-coze-panel/.env"); err == nil {
+		log.Println("✅ 已加载 bili-coze-panel/.env 配置")
+	}
 
 	log.Println("========================================")
 	log.Println("     FlowRadio Backend 启动中...")
@@ -55,9 +63,11 @@ func main() {
 
 	// 2. 初始化全局状态
 	hostState := &HostState{
-		Personality:         initialHostPersonality,
-		CurrentGenre:        initialCurrentGenre,
-		ConversationHistory: []map[string]string{},
+		Personality:          initialHostPersonality,
+		CurrentGenre:         initialCurrentGenre,
+		ConversationHistory:  []map[string]string{},
+		LastMusicRequestTime: time.Now(), // 初始化为当前时间
+		LastSpeakTime:        time.Now(),
 	}
 
 	llmProxy := NewDoubaoProxy(systemPromptFilePath)
@@ -102,8 +112,115 @@ func main() {
 	// 4. 启动 Lyria 音乐生成
 	go globalState.startLyriaMusicGeneration()
 
-	// 5. 启动 HTTP + WebSocket 服务器
+	// 5. 启动 Bilibili 爬虫监听器 (新增)
+	go globalState.runBilibiliListener()
+
+	// 6. 启动自动切歌检查器 (新增)
+	go globalState.runAutoMusicChanger()
+
+	// 7. 启动 HTTP + WebSocket 服务器
 	startHTTPServer(globalState)
+}
+
+// runAutoMusicChanger 定期检查是否需要自动切歌
+func (g *GlobalState) runAutoMusicChanger() {
+	ticker := time.NewTicker(10 * time.Second)
+	defer ticker.Stop()
+
+	log.Println("⏰ 自动切歌检查器已启动")
+
+	for range ticker.C {
+		g.HostState.mu.Lock()
+		lastMusic := g.HostState.LastMusicRequestTime
+		lastSpeak := g.HostState.LastSpeakTime
+		g.HostState.mu.Unlock()
+
+		// 检查条件:
+		// 1. 距离上次音乐请求超过 3 分钟
+		// 2. 距离上次说话超过 10 秒 (避免打断)
+		if time.Since(lastMusic) > 3*time.Minute {
+			if time.Since(lastSpeak) > 10*time.Second {
+				log.Printf("⏰ 触发自动切歌 (上次请求: %v, 上次说话: %v)", time.Since(lastMusic), time.Since(lastSpeak))
+				
+				// 更新时间防止重复触发
+				g.HostState.mu.Lock()
+				g.HostState.LastMusicRequestTime = time.Now()
+				g.HostState.mu.Unlock()
+
+				// 触发 Coze 工作流
+				// 传入 Chat_trigger: true, 文本为空
+				go g.handleUserInputWithCoze("", "System", true)
+			}
+		}
+	}
+}
+
+// runBilibiliListener 监听 Bilibili 爬虫的 WebSocket
+func (g *GlobalState) runBilibiliListener() {
+	crawlerURL := "ws://localhost:3000" // 爬虫默认端口
+	log.Printf("[BiliListener] 🎧 正在连接爬虫: %s", crawlerURL)
+
+	for {
+		// 使用 gorilla/websocket 作为客户端连接爬虫
+		conn, _, err := websocket.DefaultDialer.Dial(crawlerURL, nil)
+		if err != nil {
+			// 连接失败，等待后重试 (静默重试，避免刷屏)
+			time.Sleep(10 * time.Second)
+			continue
+		}
+
+		log.Println("[BiliListener] ✅ 已连接到 Bilibili 爬虫")
+
+		for {
+			_, message, err := conn.ReadMessage()
+			if err != nil {
+				log.Printf("[BiliListener] ❌ 连接断开: %v", err)
+				break
+			}
+
+			// 解析消息
+			var msg map[string]interface{}
+			if err := json.Unmarshal(message, &msg); err != nil {
+				continue
+			}
+
+			// 调试: 打印所有收到的消息类型
+			// log.Printf("[BiliListener] 收到消息类型: %v", msg["type"])
+
+			// 处理总结消息 (danmuSummary)
+			if msg["type"] == "danmuSummary" {
+				log.Printf("[BiliListener] 🔍 检测到 danmuSummary 消息")
+				
+				// 调试 payload 类型
+				// log.Printf("[BiliListener] Payload 类型: %T", msg["payload"])
+
+				if payload, ok := msg["payload"].(map[string]interface{}); ok {
+					if cozeText, ok := payload["cozeText"].([]interface{}); ok && len(cozeText) > 0 {
+						// 提取总结文本
+						summaryText := fmt.Sprintf("%v", cozeText[0])
+						log.Printf("[BiliListener] 📝 收到总结: %s", summaryText)
+						
+						// 广播到前端 (让前端显示弹幕总结)
+						g.WSManager.BroadcastMessage("DANMU_SUMMARY", map[string]interface{}{
+							"text":     summaryText,
+							"username": "弹幕分析师",
+						})
+
+						// 触发 Coze 工作流 (Chat_trigger = true)
+						// 注意: 这里我们把总结文本作为 USER_INPUT 传入
+						// 将用户名改为中文 "弹幕分析师" 以便 Coze 更好识别
+						go g.handleUserInputWithCoze(summaryText, "弹幕分析师", true)
+					} else {
+						log.Printf("[BiliListener] ⚠️ danmuSummary 缺少 cozeText 或为空: %+v", payload)
+					}
+				} else {
+					log.Printf("[BiliListener] ⚠️ danmuSummary payload 格式错误 (期望 map[string]interface{}): %T", msg["payload"])
+				}
+			}
+		}
+		conn.Close()
+		time.Sleep(3 * time.Second)
+	}
 }
 
 // 启动 HTTP + WebSocket 服务器

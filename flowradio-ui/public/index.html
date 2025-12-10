@@ -452,6 +452,7 @@
         <button class="tab-btn active" data-tab="history">聊天历史</button>
         <button class="tab-btn" data-tab="audio">音频设置</button>
         <button class="tab-btn" data-tab="magenta">Magenta</button>
+        <button class="tab-btn" data-tab="system">系统</button>
       </div>
 
       <div class="settings-content">
@@ -547,8 +548,24 @@ electronic dance|0.6"></textarea>
               <textarea name="reasoning" rows="2" placeholder="音乐生成的理由或说明..."></textarea>
             </div>
 
-            <button type="submit" class="submit-btn">🎵 生成音乐</button>
+            <button type="submit" class="submit-btn">应用设置</button>
           </form>
+        </div>
+
+        <!-- 系统设置 -->
+        <div class="tab-pane" id="tab-system">
+          <h3 style="margin-bottom: 20px;">🖥️ 系统控制</h3>
+          
+          <div class="form-group">
+            <button id="btn-restart-app" style="width: 100%; padding: 12px; background: #f57c00; border: none; border-radius: 4px; color: white; cursor: pointer; margin-bottom: 10px; font-weight: bold;">
+              🔄 重启应用
+            </button>
+            <p style="font-size: 12px; color: #aaa; margin-bottom: 20px;">遇到显示异常或连接问题时尝试重启。</p>
+            
+            <button id="btn-quit-app" style="width: 100%; padding: 12px; background: #d32f2f; border: none; border-radius: 4px; color: white; cursor: pointer; font-weight: bold;">
+              ❌ 关闭应用
+            </button>
+          </div>
         </div>
       </div>
     </div>

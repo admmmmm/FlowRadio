@@ -220,6 +220,22 @@ class FlowRadioApp {
           if (toggleBtn) {
             toggleBtn.textContent = visible ? '关闭 Panel' : '开启 Panel';
           }
+
+          // ✅ 关键修复: 根据面板状态切换 iframe 的点击穿透
+          const iframe = document.getElementById('live2d-frame');
+          const container = document.getElementById('live2d-container');
+          if (iframe && container) {
+             const pointerEvents = visible ? 'auto' : 'none';
+             iframe.style.pointerEvents = pointerEvents;
+             container.style.pointerEvents = pointerEvents;
+             console.log(`[Live2D] Updated pointer-events to: ${pointerEvents}`);
+          }
+        } else if (type === 'bilibili-danmaku') {
+            // 监听来自 iframe 的 B站弹幕 (如果有)
+            const { message, username } = event.data;
+            if (message && username) {
+                this.addDanmaku(message, '#fff', username);
+            }
         }
       });
 
@@ -317,7 +333,7 @@ class FlowRadioApp {
   waitForLive2D() {
     return new Promise((resolve, reject) => {
       const timeout = setTimeout(() => {
-        console.warn('[Live2D] Init timeout - continuing anyway');
+        console.warn('[Live2D] Init timeout - continuing anyway. (Please ensure Live2D service is running at http://localhost:5173)');
         resolve(); // 不再reject，允许继续
       }, 10000);
 
@@ -344,6 +360,142 @@ class FlowRadioApp {
    * 连接后端 WebSocket 服务
    */
   async connectBackend() {
+    // 1. 连接 Go 后端 (控制逻辑)
+    this.connectGoBackend();
+    
+    // 2. 连接 Bilibili 爬虫 (弹幕数据)
+    this.connectBilibiliCrawler();
+  }
+
+  connectGoBackend() {
+    const wsUrl = 'ws://localhost:8080/ws';
+    console.log('[WebSocket] 🔌 Connecting to Go Backend:', wsUrl);
+    
+    try {
+      this.ws = new WebSocket(wsUrl);
+      // ... (Standard handlers)
+      this.ws.onopen = () => {
+        console.log('[GoBackend] ✅ Connected');
+        this.topBar?.showMessage('✅ 已连接后端控制', 2000, 'normal');
+      };
+      this.ws.onmessage = (e) => this.handleBackendMessage(JSON.parse(e.data));
+      this.ws.onclose = () => setTimeout(() => this.connectGoBackend(), 5000);
+      this.ws.onerror = (e) => console.error('[GoBackend] Error:', e);
+    } catch (e) {
+      console.error('[GoBackend] Connection failed:', e);
+    }
+  }
+
+  connectBilibiliCrawler() {
+    const wsUrl = 'ws://localhost:3000'; // 默认爬虫端口
+    console.log('[WebSocket] 🔌 Connecting to Bilibili Crawler:', wsUrl);
+
+    try {
+      // 显式指定协议，避免某些环境下的 400 错误
+      const biliWs = new WebSocket(wsUrl, []);
+      
+      biliWs.onopen = () => {
+        console.log('[BiliCrawler] ✅ Connected');
+        this.topBar?.showMessage('✅ 已连接B站弹幕源', 2000, 'bilibili');
+      };
+
+      biliWs.onmessage = (event) => {
+        try {
+          const msg = JSON.parse(event.data);
+          // 爬虫消息格式: { type: 'danmu'|'gift'|..., payload: ... }
+          this.handleBilibiliMessage(msg);
+        } catch (e) {
+          console.error('[BiliCrawler] Parse error:', e);
+        }
+      };
+
+      biliWs.onclose = () => {
+        console.warn('[BiliCrawler] Disconnected, retrying in 5s...');
+        setTimeout(() => this.connectBilibiliCrawler(), 5000);
+      };
+    } catch (e) {
+      console.error('[BiliCrawler] Connection failed:', e);
+    }
+  }
+
+  handleBilibiliMessage(msg) {
+    const { type, payload } = msg;
+    // console.log('[BiliCrawler]', type, payload);
+
+    switch (type) {
+      case 'danmu':
+        // payload: { nickname, content, ... }
+        if (payload.content) {
+            this.addDanmaku(payload.content, '#fff', payload.nickname);
+            
+            // 转发给后端触发 Coze 回复 (Chat Trigger = true)
+            if (this.ws && this.ws.readyState === WebSocket.OPEN) {
+                this.ws.send(JSON.stringify({
+                    type: 'USER_INPUT',
+                    data: { 
+                        text: payload.content,
+                        username: payload.nickname,
+                        chatTrigger: true
+                    }
+                }));
+            }
+        }
+        break;
+      case 'gift':
+        // payload: { nickname, giftName, num, ... }
+        this.addDanmaku(`🎁 ${payload.nickname} 投喂了 ${payload.num} 个 ${payload.giftName}`, '#ffeb3b', 'System');
+        break;
+      case 'superchat':
+        this.addDanmaku(`💰 [SC] ${payload.nickname}: ${payload.message}`, '#ff4081', 'System');
+        break;
+      case 'entry':
+        // 进场消息太多可能刷屏，可选开启
+        this.addDanmaku(`👋 ${payload.nickname} 进入直播间`, '#aaa', 'System');
+        
+        // 欢迎用户 (通过弹幕分析师渠道)
+        // 30% 概率触发欢迎，避免刷屏
+        if (Math.random() < 0.3 && this.ws && this.ws.readyState === WebSocket.OPEN) {
+             this.ws.send(JSON.stringify({
+                type: 'USER_INPUT',
+                data: { 
+                    text: `用户 ${payload.nickname} 进入了直播间，请热情欢迎一下！`,
+                    username: '弹幕分析师',
+                    chatTrigger: true
+                }
+            }));
+        }
+        break;
+      case 'danmuSummary':
+        // Coze 总结完成
+        console.log('[BiliCrawler] 📝 Summary:', payload.cozeText);
+        if (payload.cozeText && payload.cozeText.length > 0) {
+            // 显示为 Super Chat 样式的弹幕分析师消息
+            const summaryText = payload.cozeText[0];
+            this._renderSuperChat('弹幕分析师', summaryText, 100, 15); // 100元颜色(橙色), 15秒显示
+            
+            // 关键修复: 显式发送给后端触发 Coze 工作流
+            // 因为后端直接连接爬虫可能不稳定，或者被前端抢占
+            console.log('[BiliCrawler] 📤 Forwarding summary to backend...');
+            if (this.ws && this.ws.readyState === WebSocket.OPEN) {
+                this.ws.send(JSON.stringify({
+                    type: 'DANMU_SUMMARY',
+                    data: { 
+                        text: summaryText,
+                        username: '弹幕分析师'
+                    }
+                }));
+            } else {
+                console.warn('[BiliCrawler] ⚠️ Backend not connected, cannot forward summary');
+            }
+        }
+        break;
+    }
+  }
+
+  /**
+   * (Legacy) 连接后端 WebSocket 服务 - 保留旧方法名以防兼容性问题，但内部已拆分
+   */
+  async connectBackend_Legacy() {
     const wsUrl = 'ws://localhost:8080/ws';
     
     console.log('[WebSocket] 🔌 Attempting to connect to:', wsUrl);
@@ -475,6 +627,14 @@ class FlowRadioApp {
     // 智能解析角色 (从 script 前缀)
     let role = 'Baobab'; // 默认为 Baobab (Host 1)
     
+    // 检查 raw_host 是否明确指定了 host2 (Mao/Acacia)
+    // 有些时候 Coze 返回的 raw_host 包含 role 字段，或者我们可以通过 host2 字段判断
+    if (raw_host) {
+        if (raw_host.host2 || raw_host.role === 'Acacia' || raw_host.role === 'Mao') {
+            role = 'Mao';
+        }
+    }
+
     if (script) {
         if (script.includes('Mao:') || script.includes('Acacia:')) {
             role = 'Mao';
@@ -506,7 +666,8 @@ class FlowRadioApp {
     this.enqueueSpeech({
       text: script,
       audioUrl: tts_url,
-      role: role
+      role: role,
+      action: messageData.action // 传递动作
     });
     
     // 保存到聊天历史
@@ -761,7 +922,18 @@ class FlowRadioApp {
       */
 
       // ⚠️ 确保 Fast Ack 也能触发 Live2D
-      this.triggerLive2DSpeech(item.text, item.audioUrl, characterId);
+      // 如果有 action，优先使用 action
+      if (item.action) {
+        console.log('[Speech] 🎬 Triggering action:', item.action);
+        this.triggerLive2DAction({
+            characterId: characterId,
+            text: item.text,
+            audioUrl: item.audioUrl,
+            motion: item.action // 将 action 字符串作为 motion 传递
+        });
+      } else {
+        this.triggerLive2DSpeech(item.text, item.audioUrl, characterId);
+      }
       
       // 3. 等待播放完成 (支持中断)
       await new Promise(resolve => {
@@ -1482,6 +1654,70 @@ class FlowRadioApp {
         }
       });
     }
+
+    // 系统控制按钮
+    const btnRestart = document.getElementById('btn-restart-app');
+    if (btnRestart) {
+      btnRestart.addEventListener('click', () => {
+        console.log('[System] Restart button clicked');
+        if (confirm('确定要重启应用吗？')) {
+          try {
+            // 尝试多种方式获取 ipcRenderer
+            let ipcRenderer;
+            if (window.require) {
+                ipcRenderer = window.require('electron').ipcRenderer;
+            } else if (window.electron && window.electron.ipcRenderer) {
+                ipcRenderer = window.electron.ipcRenderer;
+            } else {
+                // 尝试直接 require (如果 nodeIntegration=true)
+                const electron = require('electron');
+                ipcRenderer = electron.ipcRenderer;
+            }
+
+            if (ipcRenderer) {
+                console.log('[System] Sending system-relaunch IPC');
+                ipcRenderer.send('system-relaunch');
+            } else {
+                throw new Error('ipcRenderer not found');
+            }
+          } catch (e) {
+            console.error('[System] Failed to send relaunch IPC:', e);
+            alert('重启失败: ' + e.message + '\n请尝试手动重启。');
+          }
+        }
+      });
+    }
+
+    const btnQuit = document.getElementById('btn-quit-app');
+    if (btnQuit) {
+      btnQuit.addEventListener('click', () => {
+        console.log('[System] Quit button clicked');
+        if (confirm('确定要关闭应用吗？')) {
+          try {
+            let ipcRenderer;
+            if (window.require) {
+                ipcRenderer = window.require('electron').ipcRenderer;
+            } else if (window.electron && window.electron.ipcRenderer) {
+                ipcRenderer = window.electron.ipcRenderer;
+            } else {
+                const electron = require('electron');
+                ipcRenderer = electron.ipcRenderer;
+            }
+
+            if (ipcRenderer) {
+                console.log('[System] Sending system-quit IPC');
+                ipcRenderer.send('system-quit');
+            } else {
+                throw new Error('ipcRenderer not found');
+            }
+          } catch (e) {
+            console.error('[System] Failed to send quit IPC:', e);
+            alert('关闭失败: ' + e.message);
+          }
+        }
+      });
+    }
+
 
     // Magenta表单提交
     const magentaForm = document.getElementById('magenta-form');

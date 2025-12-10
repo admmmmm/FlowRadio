@@ -25,7 +25,7 @@ type CozeWorkflowClient struct {
 // MainWorkflowRequest Main工作流请求
 type MainWorkflowRequest struct {
 	WorkflowID string                 `json:"workflow_id"`
-	AppID      string                 `json:"app_id"`
+	AppID      string                 `json:"app_id,omitempty"`
 	Parameters map[string]interface{} `json:"parameters"`
 }
 
@@ -57,8 +57,9 @@ type MusicParams struct {
 
 // HostOutput 主持人输出
 type HostOutput struct {
-	Host1 string `json:"host1"`
-	TTS   string `json:"tts"`
+	Host1  string `json:"host1"`
+	TTS    string `json:"tts"`
+	Action string `json:"action"` // 新增: 动作指令
 }
 
 // MainWorkflowResult Main工作流结果
@@ -66,7 +67,8 @@ type MainWorkflowResult struct {
 	MusicParams   *MusicParams `json:"music_params"`
 	HostScript    string       `json:"host_script"`
 	HostTTSURL    string       `json:"host_tts_url"`
-	RawHostOutput *HostOutput  `json:"raw_host_output"` // 新增
+	HostAction    string       `json:"host_action"`    // 新增
+	RawHostOutput *HostOutput  `json:"raw_host_output"`
 	Comments      []string     `json:"comments"`
 	Reply         string       `json:"reply"`
 }
@@ -76,7 +78,8 @@ type IntegrationResult struct {
 	MusicParams   *MusicParams        `json:"music_params"`
 	HostScript    string              `json:"host_script"`
 	HostTTSURL    string              `json:"host_tts_url"`
-	RawHostOutput *HostOutput         `json:"raw_host_output,omitempty"` // 新增: 原始主持人输出
+	HostAction    string              `json:"host_action"`       // 新增
+	RawHostOutput *HostOutput         `json:"raw_host_output,omitempty"`
 	Atmosphere    *AtmosphereResult   `json:"atmosphere,omitempty"`
 }
 
@@ -114,20 +117,41 @@ func NewCozeClient() *CozeWorkflowClient {
 }
 
 // CallMainWorkflow 调用Main工作流
-func (c *CozeWorkflowClient) CallMainWorkflow(textInput, username, processInput string, callback StreamCallback) (*MainWorkflowResult, error) {
+func (c *CozeWorkflowClient) CallMainWorkflow(textInput, username, processInput string, chatTrigger bool, callback StreamCallback) (*MainWorkflowResult, error) {
+	// 获取 Workflow ID (优先环境变量)
+	workflowID := os.Getenv("COZE_WORKFLOW_ID")
+	if workflowID == "" {
+		workflowID = "7581487516789735476" // 默认使用新的弹幕分析师工作流
+	}
+
+	// 构造 danmu 参数 (单条消息包装为列表)
+	danmuList := []map[string]interface{}{
+		{
+			"name":   username,
+			"text":   textInput,
+			"weight": 1,
+		},
+	}
+
 	// 使用用户提供的参数结构
 	req := MainWorkflowRequest{
-		WorkflowID: MainWorkflowID,
-		AppID:      MainAppID,
+		WorkflowID: workflowID,
+		// AppID:      MainAppID, // 暂时移除 AppID，因为新工作流可能不需要或不匹配
 		Parameters: map[string]interface{}{
 			"USER_INPUT":        textInput,
 			"CONVERSATION_NAME": "Default",
 			"User_name":         username,
+			"Chat_trigger":      chatTrigger,
+			"danmu":             danmuList, // 新增 danmu 参数
 			// 保留旧参数以防万一
 			"text_input":    textInput,
 			"process_input": processInput,
 		},
 	}
+
+	// 调试: 打印请求参数
+	reqJSON, _ := json.MarshalIndent(req, "", "  ")
+	fmt.Printf("🚀 [Coze] 发起请求: %s\n", string(reqJSON))
 
 	nodes, err := c.callWorkflow(req, callback)
 	if err != nil {
@@ -186,10 +210,20 @@ func (c *CozeWorkflowClient) CallMainWorkflow(textInput, username, processInput 
 
 				} else if strings.Contains(title, "Acacia") || title == "输出_1" {
 					// Acacia (Host 2) -> 映射为 Mao
+					prefix := "Mao: "
+					cleanContent := content
+					
+					if strings.HasPrefix(content, "topic：") || strings.HasPrefix(content, "topic:") {
+						prefix = "Topic: "
+						cleanContent = strings.TrimPrefix(content, "topic：")
+						cleanContent = strings.TrimPrefix(cleanContent, "topic:")
+						cleanContent = strings.TrimSpace(cleanContent)
+					}
+
 					if result.HostScript == "" {
-						result.HostScript = "Mao: " + content
+						result.HostScript = prefix + cleanContent
 					} else {
-						result.HostScript += "\n\nMao: " + content
+						result.HostScript += "\n\n" + prefix + cleanContent
 					}
 				}
 			}
@@ -204,6 +238,7 @@ func (c *CozeWorkflowClient) CallMainWorkflow(textInput, username, processInput 
 			if err := json.Unmarshal([]byte(node.Content), &hostOutput); err == nil {
 				result.HostScript = hostOutput.Host1
 				result.HostTTSURL = hostOutput.TTS
+				result.HostAction = hostOutput.Action // 解析动作
 				result.RawHostOutput = &hostOutput // 保存原始数据
 			}
 		case strings.Contains(node.NodeTitle, "主持人2输出"):
@@ -242,15 +277,15 @@ type StreamCallback func(event string, node *StreamNode)
 
 // GenerateMusicAndAtmosphere 完整流程: 生成音乐 + 气氛组
 // callback: 用于实时推送流式节点 (如 Fast Ack)
-func (c *CozeWorkflowClient) GenerateMusicAndAtmosphere(userInput, username, context string, useAtmosphere bool, callback StreamCallback) (*IntegrationResult, error) {
+func (c *CozeWorkflowClient) GenerateMusicAndAtmosphere(userInput, username, context string, useAtmosphere bool, chatTrigger bool, callback StreamCallback) (*IntegrationResult, error) {
 	fmt.Printf("\n%s\n", strings.Repeat("=", 70))
 	fmt.Printf("🎯 开始生成音乐和气氛组内容 (流式模式)\n")
 	fmt.Printf("%s\n", strings.Repeat("=", 70))
-	fmt.Printf("📝 用户输入: %s (User: %s)\n", userInput, username)
+	fmt.Printf("📝 用户输入: %s (User: %s) [ChatTrigger: %v]\n", userInput, username, chatTrigger)
 	fmt.Printf("📝 上下文: %s\n", context)
 
 	// Step 1: 调用Main工作流 (传入回调)
-	mainResult, err := c.CallMainWorkflow(userInput, username, context, callback)
+	mainResult, err := c.CallMainWorkflow(userInput, username, context, chatTrigger, callback)
 	if err != nil {
 		return nil, fmt.Errorf("Main工作流调用失败: %v", err)
 	}
@@ -264,6 +299,7 @@ func (c *CozeWorkflowClient) GenerateMusicAndAtmosphere(userInput, username, con
 		MusicParams:   mainResult.MusicParams,
 		HostScript:    mainResult.HostScript,
 		HostTTSURL:    mainResult.HostTTSURL,
+		HostAction:    mainResult.HostAction, // 传递动作
 		RawHostOutput: mainResult.RawHostOutput,
 	}
 

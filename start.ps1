@@ -85,23 +85,28 @@ Start-Sleep -Seconds 2
 
 # 2. Start Go Backend
 Write-Host "Step 2/4: Starting Go WebSocket Backend..." -ForegroundColor Yellow
-Write-Host "  Using compiled binary: flowradio-ws.exe" -ForegroundColor Cyan
+Write-Host "  Running from source (go run .)..." -ForegroundColor Cyan
 
 Start-Process powershell -ArgumentList "-NoExit", "-Command", "cd '$PSScriptRoot\backend'; `
 `$env:GEMINI_API_KEY='$env:GEMINI_API_KEY'; `
 `$env:COZE_API_TOKEN='$env:COZE_API_TOKEN'; `
 `$env:VOLCANO_API_KEY='$env:VOLCANO_API_KEY'; `
 `$env:MAIN_WORKFLOW_ID='$env:MAIN_WORKFLOW_ID'; `
-`$env:MAIN_APP_ID='$env:MAIN_APP_ID'; .\flowradio-ws.exe"
+`$env:MAIN_APP_ID='$env:MAIN_APP_ID'; go run ."
 Start-Sleep -Seconds 3
 
 # 3. Start Live2D Service
-Write-Host "Step 3/4: Starting Live2D Service..." -ForegroundColor Yellow
+Write-Host "Step 3/5: Starting Live2D Service..." -ForegroundColor Yellow
 Start-Process powershell -ArgumentList "-NoExit", "-Command", "cd '$PSScriptRoot\live2d'; npm run dev"
 Start-Sleep -Seconds 3
 
-# 4. Start FlowRadio UI (Electron)
-Write-Host "Step 4/4: Starting FlowRadio UI..." -ForegroundColor Yellow
+# 4. Start Bilibili Crawler
+Write-Host "Step 4/5: Starting Bilibili Crawler..." -ForegroundColor Yellow
+Start-Process powershell -ArgumentList "-NoExit", "-Command", "cd '$PSScriptRoot\bili-coze-panel'; node crawler.js"
+Start-Sleep -Seconds 3
+
+# 5. Start FlowRadio UI (Electron)
+Write-Host "Step 5/5: Starting FlowRadio UI..." -ForegroundColor Yellow
 cd "$PSScriptRoot\flowradio-ui"
 
 # Check if dependencies are installed
@@ -119,6 +124,7 @@ Write-Host "Services running on:" -ForegroundColor Yellow
 Write-Host "  - Lyria Service: http://localhost:8000" -ForegroundColor White
 Write-Host "  - Go Backend: ws://localhost:8080/ws" -ForegroundColor White
 Write-Host "  - Live2D Service: http://localhost:5173" -ForegroundColor White
+Write-Host "  - Bilibili Crawler: http://localhost:3000" -ForegroundColor White
 Write-Host "  - FlowRadio UI: launching..." -ForegroundColor White
 Write-Host ""
 

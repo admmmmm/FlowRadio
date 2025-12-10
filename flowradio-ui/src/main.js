@@ -2,10 +2,22 @@
  * Electron 主进程
  */
 
-const { app, BrowserWindow } = require('electron');
+const { app, BrowserWindow, ipcMain } = require('electron');
 const path = require('path');
 
 let mainWindow = null;
+
+// 系统控制 IPC
+ipcMain.on('system-relaunch', () => {
+  console.log('[Main] Received system-relaunch command');
+  app.relaunch();
+  app.exit(0);
+});
+
+ipcMain.on('system-quit', () => {
+  console.log('[Main] Received system-quit command');
+  app.quit();
+});
 
 console.log('[Main] ========== ELECTRON MAIN PROCESS ==========');
 console.log('[Main] Electron version:', process.versions.electron);
