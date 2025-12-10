@@ -7,6 +7,7 @@ import (
 	"log"
 	"net/http"
 	"os"
+	"regexp"
 	"strings"
 	"sync"
 	"time"
@@ -313,25 +314,56 @@ func (g *GlobalState) handleUserInputWithCoze(userText string, username string, 
 				// 如果没有找到 TTS JSON，或者提取后 script 为空(说明只有TTS?)，则处理剩余部分
 				if script == "" {
 					// 如果 content 看起来像纯 JSON 且不是 TTS，可能需要忽略
-					if strings.HasPrefix(strings.TrimSpace(content), "{") && !strings.Contains(content, "link") {
-						// 再次检查是否是 MusicParams (如果整个节点只是 MusicParams)
-						var mp MusicParams
-						if err := json.Unmarshal([]byte(content), &mp); err == nil {
-							if mp.Reasoning != "" {
-								// 已经在上面处理过了? 不，如果节点只有 MusicParams 没有换行
-								log.Printf("🎵 [Stream] 节点仅包含 MusicParams")
-								musicData := map[string]interface{}{
-									"music_config":      mp.MusicConfig,
-									"weighted_prompts": mp.WeightedPrompts,
-									"reasoning":        mp.Reasoning,
+					if strings.HasPrefix(strings.TrimSpace(content), "{") {
+						// 1. 尝试解析为 HostOutput (包含 Action)
+						var hostOut struct {
+							Script string `json:"script"`
+							Text   string `json:"text"`
+							Action string `json:"action"`
+							Host1  string `json:"host1"`
+						}
+						if err := json.Unmarshal([]byte(content), &hostOut); err == nil {
+							// 如果有 Action，广播 Action
+							if hostOut.Action != "" {
+								log.Printf("🎬 [Stream] 检测到动作: %s", hostOut.Action)
+								// TODO: 可以在这里广播动作，或者只在汇总时广播
+								// 目前前端可能只在 HOST_MESSAGE 中处理 action
+							}
+							
+							// 提取 Script
+							extractedScript := hostOut.Script
+							if extractedScript == "" { extractedScript = hostOut.Text }
+							if extractedScript == "" { extractedScript = hostOut.Host1 }
+							
+							if extractedScript != "" {
+								script = extractedScript
+							}
+						}
+
+						// 2. 再次检查是否是 MusicParams (如果整个节点只是 MusicParams)
+						// 只有当 script 仍然为空时才检查，避免误判
+						if script == "" {
+							var mp MusicParams
+							if err := json.Unmarshal([]byte(content), &mp); err == nil {
+								if mp.Reasoning != "" {
+									// 已经在上面处理过了? 不，如果节点只有 MusicParams 没有换行
+									log.Printf("🎵 [Stream] 节点仅包含 MusicParams")
+									musicData := map[string]interface{}{
+										"music_config":      mp.MusicConfig,
+										"weighted_prompts": mp.WeightedPrompts,
+										"reasoning":        mp.Reasoning,
+									}
+									g.WSManager.BroadcastMessage("MUSIC_PARAMS", musicData)
+									g.updateLyriaWithMusicParams(&mp)
+									return
 								}
-								g.WSManager.BroadcastMessage("MUSIC_PARAMS", musicData)
-								g.updateLyriaWithMusicParams(&mp)
-								return
 							}
 						}
 					}
-					script = content
+					
+					if script == "" {
+						script = content
+					}
 				}
 
 				// --- 清理 Script 中的标签 ---
@@ -355,6 +387,20 @@ func (g *GlobalState) handleUserInputWithCoze(userText string, username string, 
 				script = strings.ReplaceAll(script, "AcaciaSaid为true.", "")
 				
 				script = strings.TrimSpace(script)
+
+				// --- 解析动作 (Action) ---
+				// 格式: (动作名) 文本内容
+				// 示例: (眼睛发光) 大樹快看！...
+				var action string
+				// 匹配开头括号内的内容，支持中文括号
+				// 注意: 在 Go 正则中，中文括号不需要转义，且不能转义
+				reAction := regexp.MustCompile(`^[(（](.*?)[)）]\s*(.*)`)
+				matches := reAction.FindStringSubmatch(script)
+				if len(matches) == 3 {
+					action = matches[1]
+					script = matches[2]
+					log.Printf("🎬 [Stream] 提取到动作: %s", action)
+				}
 
 				// Determine Speaker
 				prefix := "Baobab: "
@@ -386,10 +432,11 @@ func (g *GlobalState) handleUserInputWithCoze(userText string, username string, 
 						})
 					} else {
 						fullScript := prefix + script
-						log.Printf("🌊 [Stream] 发送流式消息: %s... (TTS: %v)", fullScript[:min(20, len(fullScript))], ttsUrl != "")
+						log.Printf("🌊 [Stream] 发送流式消息: %s... (TTS: %v, Action: %s)", fullScript[:min(20, len(fullScript))], ttsUrl != "", action)
 						g.WSManager.BroadcastMessage("HOST_MESSAGE", map[string]interface{}{
 							"script":  fullScript,
 							"tts_url": ttsUrl,
+							"action":  action, // 新增动作字段
 							"source":  "Coze Stream",
 						})
 					}
@@ -420,8 +467,17 @@ func (g *GlobalState) handleUserInputWithCoze(userText string, username string, 
 	}
 
 	// 1. 广播主持人播报 (包含原始数据)
-	// 只有在没有流式发送过消息时，才发送汇总消息
-	if !hasStreamedMessages {
+	// 即使流式发送过消息，如果最终结果包含 URL (音频链接)，也必须发送汇总消息，否则前端无法播放语音
+	shouldSendFinal := !hasStreamedMessages
+	if hasStreamedMessages {
+		// 检查是否包含 URL (TTS链接)
+		if result.HostTTSURL != "" || strings.Contains(result.HostScript, "http") {
+			shouldSendFinal = true
+			log.Printf("🌊 [Stream] 虽然已流式发送，但最终结果包含 URL，强制发送汇总消息")
+		}
+	}
+
+	if shouldSendFinal {
 		// 更新上次说话时间
 		g.HostState.mu.Lock()
 		g.HostState.LastSpeakTime = time.Now()
@@ -455,7 +511,7 @@ func (g *GlobalState) handleUserInputWithCoze(userText string, username string, 
 			g.WSManager.BroadcastMessage("HOST_MESSAGE", messageData)
 		}
 	} else {
-		log.Printf("🌊 [Stream] 已通过流式发送消息，跳过发送汇总 HOST_MESSAGE")
+		log.Printf("🌊 [Stream] 已通过流式发送消息且无新URL，跳过发送汇总 HOST_MESSAGE")
 	}
 
 	// 2. 发送音乐参数到 Lyria

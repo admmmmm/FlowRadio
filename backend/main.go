@@ -48,10 +48,11 @@ func main() {
 	if err := godotenv.Load("../.env"); err != nil {
 		log.Printf("⚠️ 未找到 .env 文件或加载失败: %v", err)
 	}
-	// 尝试加载 bili-coze-panel 下的 .env (覆盖前面的配置)
-	if err := godotenv.Overload("../bili-coze-panel/.env"); err == nil {
-		log.Println("✅ 已加载 bili-coze-panel/.env 配置")
-	}
+	
+	// [已移除] 不再加载 bili-coze-panel 下的 .env，避免覆盖主配置
+	// if err := godotenv.Overload("../bili-coze-panel/.env"); err == nil {
+	// 	log.Println("✅ 已加载 bili-coze-panel/.env 配置")
+	// }
 
 	log.Println("========================================")
 	log.Println("     FlowRadio Backend 启动中...")

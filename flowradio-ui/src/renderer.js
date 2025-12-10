@@ -249,6 +249,53 @@ class FlowRadioApp {
       this.refreshChatHistory();
       console.log('[FlowRadioApp] ✓ Chat history refreshed');
 
+      // 注入调试面板
+      this.injectDebugPanel();
+    }
+
+    injectDebugPanel() {
+        const debugPanel = document.createElement('div');
+        debugPanel.style.cssText = `
+            position: fixed;
+            bottom: 10px;
+            left: 10px;
+            background: rgba(0,0,0,0.7);
+            padding: 10px;
+            border-radius: 5px;
+            z-index: 9999;
+            display: flex;
+            gap: 5px;
+            flex-wrap: wrap;
+            max-width: 300px;
+        `;
+        
+        const actions = [
+            { label: 'Test Heart (Mao)', action: '比心', role: 'Mao' },
+            { label: 'Test Happy (Mao)', action: '高兴', role: 'Mao' },
+            { label: 'Test Happy (Baobab)', action: '高兴', role: 'Baobab' },
+            { label: 'Test Speak (Mao)', action: '说话', role: 'Mao', text: '测试说话功能' },
+            { label: 'Test Speak (Baobab)', action: '说话', role: 'Baobab', text: '测试说话功能' },
+        ];
+
+        actions.forEach(act => {
+            const btn = document.createElement('button');
+            btn.textContent = act.label;
+            btn.style.cssText = 'padding: 5px; cursor: pointer; font-size: 12px;';
+            btn.onclick = () => {
+                console.log(`[Debug] Triggering ${act.label}`);
+                this.triggerLive2DAction({
+                    characterId: act.role === 'Mao' ? 'mao' : 'hiyori',
+                    text: act.text || '测试动作',
+                    audioUrl: null,
+                    motion: act.action
+                });
+            };
+            debugPanel.appendChild(btn);
+        });
+
+        document.body.appendChild(debugPanel);
+    }
+
       // 显示欢迎消息
       this.topBar.showMessage('🎵 FlowRadio AI DJ 已启动', 3000, 'superchat');
 
@@ -332,25 +379,25 @@ class FlowRadioApp {
    */
   waitForLive2D() {
     return new Promise((resolve, reject) => {
+      // 如果已经就绪，直接返回
+      if (this.live2dReady) {
+        console.log('[Live2D] ✓ Already ready');
+        resolve();
+        return;
+      }
+
       const timeout = setTimeout(() => {
         console.warn('[Live2D] Init timeout - continuing anyway. (Please ensure Live2D service is running at http://localhost:5173)');
         resolve(); // 不再reject，允许继续
       }, 10000);
 
       const checkInterval = setInterval(() => {
-        try {
-          // 检查 iframe 中的 Live2D 是否已加载
-          const iframe = document.getElementById('live2d-frame');
-          if (iframe && iframe.contentWindow && iframe.contentWindow.live2dController) {
+        // 检查 live2dReady 标志 (由 postMessage 设置)
+        if (this.live2dReady) {
             clearTimeout(timeout);
             clearInterval(checkInterval);
-            this.live2dController = iframe.contentWindow.live2dController;
-            console.log('[Live2D] ✓ Controller accessed successfully');
+            console.log('[Live2D] ✓ Ready signal received');
             resolve();
-          }
-        } catch (error) {
-          // 跨域错误是预期的，静默处理
-          // console.log('[Live2D] Waiting for iframe load...');
         }
       }, 100);
     });
@@ -646,7 +693,65 @@ class FlowRadioApp {
         }
     }
 
-    // 过滤掉 URL 显示 (如果 script 中包含 URL)
+    // 智能解析: 如果 script 中包含 URL 且 tts_url 为空，尝试提取
+    // 格式示例: "Mao: ...\nhttps://...\n\nBaobab: ...\nhttps://..."
+    if (script && (script.includes('http://') || script.includes('https://'))) {
+        console.log('[Coze] 🔍 检测到 script 中包含 URL，尝试解析多轮对话...');
+        
+        // 1. 尝试按双换行分割多轮对话
+        const parts = script.split(/\n\s*\n/);
+        const parsedSegments = [];
+        
+        for (const part of parts) {
+            // 提取 URL
+            const urlMatch = part.match(/(https?:\/\/[^\s]+)/);
+            const partUrl = urlMatch ? urlMatch[0] : '';
+            
+            // 提取文本 (移除 URL)
+            let partText = part.replace(/(https?:\/\/[^\s]+)/g, '').trim();
+            
+            // 提取角色
+            let partRole = role; // 默认继承
+            if (partText.includes('Mao:') || partText.includes('Acacia:')) {
+                partRole = 'Mao';
+                partText = partText.replace(/^(Mao|Acacia):\s*/, '');
+            } else if (partText.includes('Baobab:')) {
+                partRole = 'Baobab';
+                partText = partText.replace(/^Baobab:\s*/, '');
+            }
+            
+            // 提取动作 (如果文本中有动作标记)
+            let partAction = messageData.action; // 默认继承
+            const actionMatch = partText.match(/^[(（](.*?)[)）]/);
+            if (actionMatch) {
+                partAction = actionMatch[1];
+                // 移除动作标记，只保留文本
+                partText = partText.replace(/^[(（].*?[)）]\s*/, '');
+            }
+
+            if (partText) {
+                parsedSegments.push({
+                    text: partText,
+                    audioUrl: partUrl || (parsedSegments.length === 0 ? tts_url : ''), // 第一段如果没有URL则尝试使用主tts_url
+                    role: partRole,
+                    action: partAction
+                });
+            }
+        }
+
+        if (parsedSegments.length > 0) {
+            console.log(`[Coze] ✅ 成功解析出 ${parsedSegments.length} 段对话`);
+            parsedSegments.forEach((seg, index) => {
+                console.log(`   [${index}] Role: ${seg.role}, Action: ${seg.action}, Text: ${seg.text.substring(0,10)}..., URL: ${seg.audioUrl ? 'Yes' : 'No'}`);
+                this.enqueueSpeech(seg);
+                // 仅保存第一段或合并保存历史记录? 这里简单起见每段都保存
+                this.saveChatHistory('AI', seg.text, seg.audioUrl);
+            });
+            return; // ✅ 已处理，直接返回
+        }
+    }
+
+    // 过滤掉 URL 显示 (如果 script 中包含 URL 但未触发上面的多轮解析)
     if (script && (script.includes('http://') || script.includes('https://'))) {
         // 简单的正则替换，移除 URL
         script = script.replace(/https?:\/\/[^\s]+/g, '').trim();
@@ -1017,10 +1122,6 @@ class FlowRadioApp {
           maxCharsPerLine: 14
         }
       }, '*');
-
-      // ⚠️ 强制播放音频 (如果 Live2D 内部不播放)
-      // 注意: processSpeechQueue 已经播放了音频，这里不需要再次播放
-      // 除非 Live2D 需要音频来做口型同步，但我们已经传了 audioUrl
       
     } catch (error) {
       console.error('[Live2D] ❌ 触发说话失败:', error);
@@ -1029,14 +1130,56 @@ class FlowRadioApp {
   }
 
   /**
-   * 等待Live2D iframe就绪 - 使用live2dReady标志而非跨域访问
+   * 触发 Live2D 动作 (带语音)
    */
+  async triggerLive2DAction({ characterId, text, audioUrl, motion }) {
+    try {
+      console.log('[Live2D] 准备触发动作:', { characterId, text, audioUrl, motion });
+      
+      const iframe = document.getElementById('live2d-frame');
+      if (!iframe) {
+        console.error('[Live2D] ❌ iframe元素未找到');
+        return;
+      }
+      
+      // 等待iframe完全加载
+      await this.waitForLive2DReady();
+
+      // ✅ 使用postMessage跨域通信
+      console.log('[Live2D] 📤 Sending action command via postMessage');
+      iframe.contentWindow.postMessage({
+        type: 'live2d-say', // 复用 say 接口，因为它支持 motion 参数
+        data: {
+          id: characterId,
+          text: text,
+          audioUrl: audioUrl,
+          volume: this.hostVolume,
+          motion: motion, // 传递动作名称 (如 "眼睛发光")
+          expression: null, // 也可以根据动作映射表情
+          crossOrigin: 'anonymous',
+          charsPerSec: 8,
+          fontSize: 18,
+          maxLines: 3,
+          maxCharsPerLine: 14
+        }
+      }, '*');
+      
+    } catch (error) {
+      console.error('[Live2D] ❌ 触发动作失败:', error);
+    }
+  }
   waitForLive2DReady() {
     return new Promise((resolve) => {
       // ✅ 如果已经收到live2d-ready消息,直接resolve
       if (this.live2dReady) {
         resolve();
         return;
+      }
+
+      // 主动发送 ping
+      const iframe = document.getElementById('live2d-frame');
+      if (iframe && iframe.contentWindow) {
+          iframe.contentWindow.postMessage({ type: 'live2d-ping' }, '*');
       }
 
       // 等待最多5秒
@@ -1050,7 +1193,16 @@ class FlowRadioApp {
         } else if (attempts > 50) {
           clearInterval(checkInterval);
           console.warn('[Live2D] ⚠️ iframe等待超时,继续尝试发送');
+          // 再次尝试发送 ping
+          if (iframe && iframe.contentWindow) {
+              iframe.contentWindow.postMessage({ type: 'live2d-ping' }, '*');
+          }
           resolve();
+        } else if (attempts % 10 === 0) {
+            // 每1秒重试一次 ping
+            if (iframe && iframe.contentWindow) {
+                iframe.contentWindow.postMessage({ type: 'live2d-ping' }, '*');
+            }
         }
       }, 100);
     });
@@ -1258,35 +1410,7 @@ class FlowRadioApp {
     }
   }
 
-  /**
-   * 触发 Live2D 动作
-   */
-  triggerLive2DAction(action) {
-    if (!this.live2dController) return;
 
-    try {
-      const iframe = document.getElementById('live2d-frame');
-      if (iframe && iframe.contentWindow && iframe.contentWindow.live2dController) {
-        const controller = iframe.contentWindow.live2dController;
-        
-        // 使用对话 API（如果可用）
-        if (iframe.contentWindow.say) {
-          iframe.contentWindow.say({
-            id: action.characterId || 'hiyori',
-            text: action.text || '',
-            audioUrl: action.audioUrl,
-            motion: action.motion || '说话',
-            expression: action.expression
-          });
-        } else {
-          // 回退到基础 API
-          controller.act(action.characterId || 'hiyori', action.motion || '说话');
-        }
-      }
-    } catch (error) {
-      console.error('[Live2D] Action trigger failed:', error);
-    }
-  }
 
   /**
    * 连接 Lyria 音乐服务

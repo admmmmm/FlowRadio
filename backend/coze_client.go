@@ -58,6 +58,8 @@ type MusicParams struct {
 // HostOutput 主持人输出
 type HostOutput struct {
 	Host1  string `json:"host1"`
+	Script string `json:"script"` // 新增
+	Text   string `json:"text"`   // 新增
 	TTS    string `json:"tts"`
 	Action string `json:"action"` // 新增: 动作指令
 }
@@ -118,10 +120,15 @@ func NewCozeClient() *CozeWorkflowClient {
 
 // CallMainWorkflow 调用Main工作流
 func (c *CozeWorkflowClient) CallMainWorkflow(textInput, username, processInput string, chatTrigger bool, callback StreamCallback) (*MainWorkflowResult, error) {
-	// 获取 Workflow ID (优先环境变量)
-	workflowID := os.Getenv("COZE_WORKFLOW_ID")
+	// 获取 Workflow ID (优先环境变量 MAIN_WORKFLOW_ID, 其次 COZE_WORKFLOW_ID)
+	workflowID := os.Getenv("MAIN_WORKFLOW_ID")
 	if workflowID == "" {
-		workflowID = "7581487516789735476" // 默认使用新的弹幕分析师工作流
+		workflowID = os.Getenv("COZE_WORKFLOW_ID")
+	}
+	
+	if workflowID == "" {
+		// workflowID = "7581487516789735476" // 旧的弹幕分析师工作流 (已失效)
+		workflowID = "7581397947751333888" // 恢复使用双人对话工作流 (验证可用)
 	}
 
 	// 构造 danmu 参数 (单条消息包装为列表)
@@ -185,8 +192,40 @@ func (c *CozeWorkflowClient) CallMainWorkflow(textInput, username, processInput 
 			}
 
 			// 2. 归类对话脚本
-			// 过滤掉纯 JSON 内容 (MusicParams)
-			if strings.TrimSpace(content) != "" && !strings.HasPrefix(strings.TrimSpace(content), "{") {
+			// 尝试解析 JSON 内容 (包括 Action)
+			cleanContent := content
+			isJSON := strings.HasPrefix(strings.TrimSpace(content), "{")
+			
+			if isJSON {
+				var hostOut HostOutput
+				if err := json.Unmarshal([]byte(content), &hostOut); err == nil {
+					// 提取 Action
+					if hostOut.Action != "" {
+						result.HostAction = hostOut.Action
+						fmt.Printf("   🎬 提取到动作: %s\n", hostOut.Action)
+					}
+					
+					// 提取 Script
+					extractedScript := hostOut.Script
+					if extractedScript == "" { extractedScript = hostOut.Text }
+					if extractedScript == "" { extractedScript = hostOut.Host1 }
+					
+					if extractedScript != "" {
+						cleanContent = extractedScript
+						// 如果成功提取了脚本，我们将其视为有效内容继续处理
+						// 但要注意不要重复添加 MusicParams 的 JSON
+						if result.MusicParams != nil && extractedScript == "" {
+							// 如果是纯 MusicParams 且没有脚本，则跳过
+							cleanContent = ""
+						}
+					} else {
+						// 如果是 JSON 但没有脚本字段 (可能是纯 MusicParams)，则清空内容以跳过脚本追加
+						cleanContent = ""
+					}
+				}
+			}
+
+			if strings.TrimSpace(cleanContent) != "" {
 				if strings.Contains(title, "Baobab") || title == "输出" {
 					// Baobab (Host 1)
 					prefix := "Baobab: "
@@ -194,11 +233,12 @@ func (c *CozeWorkflowClient) CallMainWorkflow(textInput, username, processInput 
 						prefix = "[Fast Ack] Baobab: "
 					}
 					
-					// 清理 JSON 尾巴 (针对 Fast Ack 混合内容)
-					cleanContent := content
-					if idx := strings.Index(content, "\n{"); idx != -1 {
-						if json.Valid([]byte(content[idx+1:])) {
-							cleanContent = content[:idx]
+					// 清理 JSON 尾巴 (针对 Fast Ack 混合内容 - 仅当不是纯JSON时)
+					if !isJSON {
+						if idx := strings.Index(content, "\n{"); idx != -1 {
+							if json.Valid([]byte(content[idx+1:])) {
+								cleanContent = content[:idx]
+							}
 						}
 					}
 
@@ -211,11 +251,10 @@ func (c *CozeWorkflowClient) CallMainWorkflow(textInput, username, processInput 
 				} else if strings.Contains(title, "Acacia") || title == "输出_1" {
 					// Acacia (Host 2) -> 映射为 Mao
 					prefix := "Mao: "
-					cleanContent := content
 					
-					if strings.HasPrefix(content, "topic：") || strings.HasPrefix(content, "topic:") {
+					if strings.HasPrefix(cleanContent, "topic：") || strings.HasPrefix(cleanContent, "topic:") {
 						prefix = "Topic: "
-						cleanContent = strings.TrimPrefix(content, "topic：")
+						cleanContent = strings.TrimPrefix(cleanContent, "topic：")
 						cleanContent = strings.TrimPrefix(cleanContent, "topic:")
 						cleanContent = strings.TrimSpace(cleanContent)
 					}
@@ -233,10 +272,15 @@ func (c *CozeWorkflowClient) CallMainWorkflow(textInput, username, processInput 
 			if err := json.Unmarshal([]byte(node.Content), &musicParams); err == nil {
 				result.MusicParams = &musicParams
 			}
-		case strings.Contains(node.NodeTitle, "主持人1输出"):
+		case strings.Contains(node.NodeTitle, "主持人1输出") || strings.Contains(node.NodeTitle, "主持人输出"):
 			var hostOutput HostOutput
 			if err := json.Unmarshal([]byte(node.Content), &hostOutput); err == nil {
-				result.HostScript = hostOutput.Host1
+				// 提取 Script
+				script := hostOutput.Script
+				if script == "" { script = hostOutput.Text }
+				if script == "" { script = hostOutput.Host1 }
+
+				result.HostScript = script
 				result.HostTTSURL = hostOutput.TTS
 				result.HostAction = hostOutput.Action // 解析动作
 				result.RawHostOutput = &hostOutput // 保存原始数据
@@ -333,6 +377,8 @@ func (c *CozeWorkflowClient) callWorkflow(req interface{}, callback StreamCallba
 
 	httpReq.Header.Set("Authorization", "Bearer "+c.APIToken)
 	httpReq.Header.Set("Content-Type", "application/json")
+	httpReq.Header.Set("Accept", "text/event-stream") // 显式接受 SSE
+	httpReq.Header.Set("Connection", "keep-alive")    // 保持连接
 
 	client := &http.Client{
 		Timeout: 300 * time.Second, // 增加超时时间到 5 分钟
