@@ -251,50 +251,6 @@ class FlowRadioApp {
 
       // 注入调试面板
       this.injectDebugPanel();
-    }
-
-    injectDebugPanel() {
-        const debugPanel = document.createElement('div');
-        debugPanel.style.cssText = `
-            position: fixed;
-            bottom: 10px;
-            left: 10px;
-            background: rgba(0,0,0,0.7);
-            padding: 10px;
-            border-radius: 5px;
-            z-index: 9999;
-            display: flex;
-            gap: 5px;
-            flex-wrap: wrap;
-            max-width: 300px;
-        `;
-        
-        const actions = [
-            { label: 'Test Heart (Mao)', action: '比心', role: 'Mao' },
-            { label: 'Test Happy (Mao)', action: '高兴', role: 'Mao' },
-            { label: 'Test Happy (Baobab)', action: '高兴', role: 'Baobab' },
-            { label: 'Test Speak (Mao)', action: '说话', role: 'Mao', text: '测试说话功能' },
-            { label: 'Test Speak (Baobab)', action: '说话', role: 'Baobab', text: '测试说话功能' },
-        ];
-
-        actions.forEach(act => {
-            const btn = document.createElement('button');
-            btn.textContent = act.label;
-            btn.style.cssText = 'padding: 5px; cursor: pointer; font-size: 12px;';
-            btn.onclick = () => {
-                console.log(`[Debug] Triggering ${act.label}`);
-                this.triggerLive2DAction({
-                    characterId: act.role === 'Mao' ? 'mao' : 'hiyori',
-                    text: act.text || '测试动作',
-                    audioUrl: null,
-                    motion: act.action
-                });
-            };
-            debugPanel.appendChild(btn);
-        });
-
-        document.body.appendChild(debugPanel);
-    }
 
       // 显示欢迎消息
       this.topBar.showMessage('🎵 FlowRadio AI DJ 已启动', 3000, 'superchat');
@@ -359,6 +315,49 @@ class FlowRadioApp {
     // 等待 AudioAnalyzer（稍后初始化）
     console.log('[FlowRadioApp] PixiJS initialized');
   }
+
+    injectDebugPanel() {
+        const debugPanel = document.createElement('div');
+        debugPanel.style.cssText = `
+            position: fixed;
+            bottom: 10px;
+            left: 10px;
+            background: rgba(0,0,0,0.7);
+            padding: 10px;
+            border-radius: 5px;
+            z-index: 9999;
+            display: flex;
+            gap: 5px;
+            flex-wrap: wrap;
+            max-width: 300px;
+        `;
+        
+        const actions = [
+            { label: 'Test Heart (Mao)', action: '比心', role: 'Mao' },
+            { label: 'Test Happy (Mao)', action: '高兴', role: 'Mao' },
+            { label: 'Test Happy (Baobab)', action: '高兴', role: 'Baobab' },
+            { label: 'Test Speak (Mao)', action: '说话', role: 'Mao', text: '测试说话功能' },
+            { label: 'Test Speak (Baobab)', action: '说话', role: 'Baobab', text: '测试说话功能' },
+        ];
+
+        actions.forEach(act => {
+            const btn = document.createElement('button');
+            btn.textContent = act.label;
+            btn.style.cssText = 'padding: 5px; cursor: pointer; font-size: 12px;';
+            btn.onclick = () => {
+                console.log(`[Debug] Triggering ${act.label}`);
+                this.triggerLive2DAction({
+                    characterId: act.role === 'Mao' ? 'mao' : 'hiyori',
+                    text: act.text || '测试动作',
+                    audioUrl: null,
+                    motion: act.action
+                });
+            };
+            debugPanel.appendChild(btn);
+        });
+
+        document.body.appendChild(debugPanel);
+    }
 
   /**
    * 初始化 Live2D（使用独立 Live2D 仓库）
