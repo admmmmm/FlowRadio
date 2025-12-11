@@ -23,7 +23,7 @@
          { id: 'mao', modelJsonUrl: '/live2d/mao/mao_pro.model3.json', scale: 0.42, position: { xRatio: 0.7, yRatio: 0.97 } },
        ],
        persist: true,     // 允许用户在 localStorage 覆盖 NL 映射
-       enablePanel: true, // 调试面板
+       enablePanel: false, // 调试面板
      });
 
 // 纯动作/表情

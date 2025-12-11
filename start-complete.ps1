@@ -41,14 +41,14 @@ Write-Host "🎎 [3/4] Starting Live2D Service..." -ForegroundColor Yellow
 Write-Host "        Port: http://localhost:5173" -ForegroundColor Gray
 
 # Check if dependencies are installed
-if (-Not (Test-Path "$PSScriptRoot\live2d\node_modules")) {
+if (-Not (Test-Path "$PSScriptRoot\live2d_latest\node_modules")) {
     Write-Host "        Installing Live2D dependencies..." -ForegroundColor Cyan
-    cd "$PSScriptRoot\live2d"
+    cd "$PSScriptRoot\live2d_latest"
     npm install
     cd $PSScriptRoot
 }
 
-Start-Process powershell -ArgumentList "-NoExit", "-Command", "Set-Location '$PSScriptRoot\live2d'; npm run dev"
+Start-Process powershell -ArgumentList "-NoExit", "-Command", "Set-Location '$PSScriptRoot\live2d_latest'; npm run dev"
 Write-Host "        Waiting for Vite to start..." -ForegroundColor Gray
 Start-Sleep -Seconds 5
 

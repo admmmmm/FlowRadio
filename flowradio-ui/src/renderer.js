@@ -249,9 +249,6 @@ class FlowRadioApp {
       this.refreshChatHistory();
       console.log('[FlowRadioApp] ✓ Chat history refreshed');
 
-      // 注入调试面板
-      this.injectDebugPanel();
-
       // 显示欢迎消息
       this.topBar.showMessage('🎵 FlowRadio AI DJ 已启动', 3000, 'superchat');
 
@@ -316,48 +313,6 @@ class FlowRadioApp {
     console.log('[FlowRadioApp] PixiJS initialized');
   }
 
-    injectDebugPanel() {
-        const debugPanel = document.createElement('div');
-        debugPanel.style.cssText = `
-            position: fixed;
-            bottom: 10px;
-            left: 10px;
-            background: rgba(0,0,0,0.7);
-            padding: 10px;
-            border-radius: 5px;
-            z-index: 9999;
-            display: flex;
-            gap: 5px;
-            flex-wrap: wrap;
-            max-width: 300px;
-        `;
-        
-        const actions = [
-            { label: 'Test Heart (Mao)', action: '比心', role: 'Mao' },
-            { label: 'Test Happy (Mao)', action: '高兴', role: 'Mao' },
-            { label: 'Test Happy (Baobab)', action: '高兴', role: 'Baobab' },
-            { label: 'Test Speak (Mao)', action: '说话', role: 'Mao', text: '测试说话功能' },
-            { label: 'Test Speak (Baobab)', action: '说话', role: 'Baobab', text: '测试说话功能' },
-        ];
-
-        actions.forEach(act => {
-            const btn = document.createElement('button');
-            btn.textContent = act.label;
-            btn.style.cssText = 'padding: 5px; cursor: pointer; font-size: 12px;';
-            btn.onclick = () => {
-                console.log(`[Debug] Triggering ${act.label}`);
-                this.triggerLive2DAction({
-                    characterId: act.role === 'Mao' ? 'mao' : 'hiyori',
-                    text: act.text || '测试动作',
-                    audioUrl: null,
-                    motion: act.action
-                });
-            };
-            debugPanel.appendChild(btn);
-        });
-
-        document.body.appendChild(debugPanel);
-    }
 
   /**
    * 初始化 Live2D（使用独立 Live2D 仓库）
@@ -600,7 +555,7 @@ class FlowRadioApp {
    * 处理后端 WebSocket 消息
    */
   handleBackendMessage(data) {
-    console.log('[WebSocket] Received:', data);
+    // console.log('[WebSocket] Received:', data); // Suppress verbose log
 
     switch (data.type) {
       case 'HOST_MESSAGE':
@@ -655,7 +610,140 @@ class FlowRadioApp {
    * 处理主持人播报消息
    */
   handleHostMessage(data) {
-    console.log('[Coze] 📦 收到HOST_MESSAGE完整数据:', data);
+    console.log('[Coze] Received HOST_MESSAGE data:', JSON.stringify(data, null, 2));
+    
+    // 1. 尝试解析 Coze 原始混合格式 (Mixed Format Parsing)
+    // 格式: JSON(Music) + \n + Text(Script) + \n + JSON(Audio)
+    // 示例: "{\"music_config\":...}\n(微笑) 文本...\n{\"link\":\"...\"}"
+    
+    // 检查是否是原始 Coze 节点数据
+    const rawContent = data.content || (data.data && data.data.content);
+    const nodeTitle = data.node_title || (data.data && data.data.node_title) || '';
+    
+    let parsedScript = '';
+    let parsedAudioUrl = '';
+    let parsedAction = '';
+    let parsedRole = 'Baobab'; // 默认 Host 1
+    let parsedMusicConfig = null;
+
+    // 优先处理混合格式内容
+    if (rawContent && typeof rawContent === 'string') {
+        console.log('[Coze] 📦 Detected raw content, starting mixed-format parsing...');
+        
+        const lines = rawContent.split('\n');
+        const scriptLines = [];
+
+        for (const line of lines) {
+            const trimmed = line.trim();
+            if (!trimmed) continue;
+
+            // 尝试解析为 JSON
+            try {
+                // 宽松的 JSON 检测：只要包含 music_config 或 link 关键字，就尝试解析
+                // 或者以 { 开头 } 结尾
+                if ((trimmed.startsWith('{') && trimmed.endsWith('}')) || 
+                    (trimmed.includes('"music_config"') || trimmed.includes('"link"'))) {
+                    
+                    // 尝试修复可能被截断的 JSON (简单尝试)
+                    let jsonStr = trimmed;
+                    const jsonObj = JSON.parse(jsonStr);
+                    
+                    // Case A: 音乐配置
+                    if (jsonObj.music_config) {
+                        console.log('[Coze] 🎵 Found Music Config in content');
+                        parsedMusicConfig = jsonObj;
+                        this.handleMusicParams(jsonObj); // 立即处理音乐
+                        continue; // ✅ 成功解析为配置，跳过，不作为台词
+                    }
+                    
+                    // Case B: 音频链接
+                    if (jsonObj.link) {
+                        console.log('[Coze] 🔗 Found Audio Link in content:', jsonObj.link);
+                        parsedAudioUrl = jsonObj.link;
+                        continue; // ✅ 成功解析为链接，跳过，不作为台词
+                    }
+                }
+            } catch (e) {
+                // 解析失败
+                // 如果这行看起来像代码或配置（包含大量特殊字符），则忽略它，不要当作台词
+                if (trimmed.includes('"music_config"') || trimmed.includes('"weighted_prompts"')) {
+                    console.warn('[Coze] ⚠️ Ignoring raw config line:', trimmed.substring(0, 50) + '...');
+                    continue;
+                }
+            }
+
+            // Case C: 文本内容 (Script)
+            scriptLines.push(trimmed);
+        }
+
+        parsedScript = scriptLines.join('\n').trim();
+        
+        // 提取动作 (Action) - 例如 "(微笑) 大家好"
+        // ⚠️ 修正：不要在这里移除动作标记，保留原始文本给 Live2D 的 sayEnhanced 处理
+        // sayEnhanced 会自动提取 (tag) 并解析为动作
+        const actionMatch = parsedScript.match(/^[(（](.*?)[)）]/);
+        if (actionMatch) {
+            parsedAction = actionMatch[1];
+            // parsedScript = parsedScript.replace(/^[(（].*?[)）]\s*/, ''); // ❌ 不要移除
+            console.log('[Coze] 🎬 Extracted Action (Preview):', parsedAction);
+        }
+
+        // 确定角色 (Role)
+        if (nodeTitle.includes('Baobab')) {
+            parsedRole = 'Baobab';
+        } else if (nodeTitle.includes('Acacia') || nodeTitle.includes('Mao')) {
+            parsedRole = 'Mao';
+        }
+        
+        console.log('[Coze] ✅ Mixed Parsing Result:', {
+            role: parsedRole,
+            action: parsedAction,
+            script: parsedScript.substring(0, 20) + '...',
+            audio: parsedAudioUrl ? 'Yes' : 'No'
+        });
+
+        // 如果解析成功，直接入队并返回
+        // ⚠️ 关键修正：只有当有音频URL时才入队，避免"解析两遍"的问题
+        // 如果没有音频URL，说明这可能是一个中间状态的包，或者是一个纯文本包（但我们期望有TTS）
+        // 除非...这是一个纯文本消息？但在 FlowRadio 中我们通常期望有 TTS。
+        // 观察日志发现，第一次解析失败是因为没有 URL，第二次解析成功是因为有 URL。
+        // 所以，如果 parsedAudioUrl 为空，我们应该谨慎处理。
+        
+        // 但是，如果这是一个纯文本消息（比如 Fast Ack），它可能没有 link 字段，而是直接播放？
+        // 不，Fast Ack 通常走 handleUrgentPlay。
+        // 这里是 handleHostMessage，通常是长回复。
+        
+        // 策略：如果解析出了 script，但没有 audioUrl，且 rawContent 中包含 JSON 结构（说明是混合格式），
+        // 那么这极有可能是一个"未完成"的包（比如只收到了前半部分文本，还没收到后半部分音频链接）。
+        // 在这种情况下，我们应该等待完整的包，或者忽略这个包。
+        
+        // 可是，Coze 流式返回时，是一个节点一个节点返回的。
+        // 如果一个节点里既有文本又有音频链接，通常是一起返回的。
+        // 让我们看日志：
+        // 包 #2: Baobab_long_comment -> 包含 music_config, reasoning, weighted_prompts, text, link
+        // 这是一个完整的包。
+        
+        // 问题在于：scriptLines.push(trimmed) 把所有非 JSON 的行都加进去了。
+        // 而日志显示：Baobab: {"music_config":...} ...
+        // 这说明有些 JSON 没有被 try-catch 捕获，或者格式不对。
+        
+        // 让我们优化 JSON 检测逻辑，并过滤掉看起来像 JSON 但解析失败的行（如果它们确实是配置数据的话）。
+        
+        if (parsedScript) {
+            this.enqueueSpeech({
+                text: parsedScript,
+                audioUrl: parsedAudioUrl,
+                role: parsedRole,
+                action: parsedAction
+            });
+            this.saveChatHistory('AI', parsedScript, parsedAudioUrl);
+            return;
+        }
+    }
+
+    // ============================================================
+    // Fallback: 旧的解析逻辑 (用于兼容非混合格式的消息)
+    // ============================================================
     
     // BroadcastMessage 自动包装了一层 {type, data}
     // 实际数据在 data.data 中: {script, tts_url, source, raw_host}
@@ -664,10 +752,10 @@ class FlowRadioApp {
     
     // 智能解析:优先使用script,否则从raw_host提取
     if (!script && raw_host) {
-      console.log('[Coze] 🔍 script为空,尝试从raw_host解析:', raw_host);
+      console.log('[Coze] Script is empty, attempting to parse from raw_host:', raw_host);
       script = raw_host.host1 || raw_host.host2 || '';
       tts_url = tts_url || raw_host.tts || '';
-      console.log('[Coze] ✅ 从raw_host解析:', { script: script.substring(0, 50), tts_url });
+      console.log('[Coze] Parsed from raw_host:', { script: script.substring(0, 50), tts_url });
     }
     
     // 智能解析角色 (从 script 前缀)
@@ -695,7 +783,7 @@ class FlowRadioApp {
     // 智能解析: 如果 script 中包含 URL 且 tts_url 为空，尝试提取
     // 格式示例: "Mao: ...\nhttps://...\n\nBaobab: ...\nhttps://..."
     if (script && (script.includes('http://') || script.includes('https://'))) {
-        console.log('[Coze] 🔍 检测到 script 中包含 URL，尝试解析多轮对话...');
+        console.log('[Coze] Detected URL in script, attempting multi-turn parsing...');
         
         // 1. 尝试按双换行分割多轮对话
         const parts = script.split(/\n\s*\n/);
@@ -725,7 +813,8 @@ class FlowRadioApp {
             if (actionMatch) {
                 partAction = actionMatch[1];
                 // 移除动作标记，只保留文本
-                partText = partText.replace(/^[(（].*?[)）]\s*/, '');
+                // ⚠️ 修正：保留动作标记给 Live2D 处理
+                // partText = partText.replace(/^[(（].*?[)）]\s*/, '');
             }
 
             if (partText) {
@@ -739,7 +828,7 @@ class FlowRadioApp {
         }
 
         if (parsedSegments.length > 0) {
-            console.log(`[Coze] ✅ 成功解析出 ${parsedSegments.length} 段对话`);
+            console.log(`[Coze] Successfully parsed ${parsedSegments.length} segments`);
             parsedSegments.forEach((seg, index) => {
                 console.log(`   [${index}] Role: ${seg.role}, Action: ${seg.action}, Text: ${seg.text.substring(0,10)}..., URL: ${seg.audioUrl ? 'Yes' : 'No'}`);
                 this.enqueueSpeech(seg);
@@ -748,6 +837,7 @@ class FlowRadioApp {
             });
             return; // ✅ 已处理，直接返回
         }
+
     }
 
     // 过滤掉 URL 显示 (如果 script 中包含 URL 但未触发上面的多轮解析)
@@ -756,13 +846,13 @@ class FlowRadioApp {
         script = script.replace(/https?:\/\/[^\s]+/g, '').trim();
     }
 
-    console.log('[Coze] 📢 主持人播报:', script || '(空)');
-    console.log('[Coze] 🎯 TTS URL:', tts_url || '(空)');
-    console.log('[Coze] 📍 来源:', source);
-    console.log('[Coze] 🎭 角色:', role);
+    console.log('[Coze] Host Script:', script || '(Empty)');
+    console.log('[Coze] TTS URL:', tts_url || '(Empty)');
+    console.log('[Coze] Source:', source);
+    console.log('[Coze] Role:', role);
     
     if (!script) {
-      console.error('[Coze] ❌ HOST_MESSAGE 缺少 script 字段,完整数据:', messageData);
+      console.error('[Coze] Error: HOST_MESSAGE missing script field. Data:', JSON.stringify(messageData, null, 2));
       return;
     }
 
@@ -989,7 +1079,13 @@ class FlowRadioApp {
     const item = this.speechQueue.shift();
     
     try {
-      console.log(`[Speech] Processing ${item.isUrgent ? '(URGENT)' : ''}:`, item.text.substring(0, 20) + '...');
+      const previewText = item.text ? item.text.substring(0, 20) + '...' : '(No Text)';
+      console.log(`[Speech] Processing ${item.isUrgent ? '(URGENT)' : ''}:`, previewText);
+      if (item.audioUrl) {
+          console.log(`[Speech] Has Audio URL: ${item.audioUrl}`);
+      } else {
+          console.log(`[Speech] No Audio URL`);
+      }
       
       // 1. 获取音频时长 (如果可能)
       let duration = 5000; // 默认 5秒
@@ -1000,7 +1096,7 @@ class FlowRadioApp {
         } catch (e) {
           console.warn('[Speech] Failed to get duration, using default:', e);
           // 估算时长: 每字 200ms + 1000ms 缓冲
-          duration = item.text.length * 200 + 1000;
+          duration = (item.text ? item.text.length : 10) * 200 + 1000;
         }
       } else {
         duration = item.text.length * 200 + 1000;
@@ -1146,11 +1242,17 @@ class FlowRadioApp {
 
       // ✅ 使用postMessage跨域通信
       console.log('[Live2D] 📤 Sending action command via postMessage');
+      
+      // ⚠️ Workaround: live2d_latest 的 sayEnhanced 目前会忽略 explicit motion 参数
+      // 必须将动作作为 tag 拼接到文本开头，例如 "(比心) 文本..."
+      // 这样 sayEnhanced 才能通过 extractFirstTag 提取并解析动作
+      const textWithTag = motion ? `(${motion}) ${text}` : text;
+
       iframe.contentWindow.postMessage({
         type: 'live2d-say', // 复用 say 接口，因为它支持 motion 参数
         data: {
           id: characterId,
-          text: text,
+          text: textWithTag,
           audioUrl: audioUrl,
           volume: this.hostVolume,
           motion: motion, // 传递动作名称 (如 "眼睛发光")
@@ -1524,7 +1626,7 @@ class FlowRadioApp {
 
     // 加入 SC 队列 (带后端发送标志)
     this.enqueueSuperChat({
-      user: '大樹', // 本地用户默认名为 adm
+      user: 'Adm（上台演示版）', // 本地用户默认名为 Adm（上台演示版）
       text: message,
       price: 0,
       duration: 5, // 用户消息默认 5秒
@@ -1535,7 +1637,7 @@ class FlowRadioApp {
   /**
    * 发送消息到后端
    */
-  sendToBackend(text, username = 'adm') {
+  sendToBackend(text, username = 'Adm（上台演示版）') {
     if (this.ws && this.ws.readyState === WebSocket.OPEN) {
       this.ws.send(JSON.stringify({
         type: 'USER_INPUT',

@@ -101,7 +101,7 @@ let globalEnablePanel = false;  // 默认启用Panel
  * 设置是否启用Panel (必须在initLive2d之前调用)
  */
 export function setEnablePanel(enable) {
-  globalEnablePanel = enable;
+  globalEnablePanel = false;
 }
 
 /**

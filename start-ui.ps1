@@ -13,7 +13,7 @@ try {
 } catch {
     Write-Host "⚠️  Live2D service not detected on port 5173" -ForegroundColor Yellow
     Write-Host "   Please start it first with:" -ForegroundColor White
-    Write-Host "   cd D:\dev\FlowRadio\live2d" -ForegroundColor Gray
+    Write-Host "   cd D:\dev\FlowRadio\live2d_latest" -ForegroundColor Gray
     Write-Host "   npm run dev" -ForegroundColor Gray
     Write-Host ""
     $continue = Read-Host "Continue anyway? (y/N)"

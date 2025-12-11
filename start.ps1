@@ -97,7 +97,7 @@ Start-Sleep -Seconds 3
 
 # 3. Start Live2D Service
 Write-Host "Step 3/5: Starting Live2D Service..." -ForegroundColor Yellow
-Start-Process powershell -ArgumentList "-NoExit", "-Command", "cd '$PSScriptRoot\live2d'; npm run dev"
+Start-Process powershell -ArgumentList "-NoExit", "-Command", "cd '$PSScriptRoot\live2d_latest'; npm run dev"
 Start-Sleep -Seconds 3
 
 # 4. Start Bilibili Crawler
@@ -130,3 +130,5 @@ Write-Host ""
 
 Set-Location "$PSScriptRoot\flowradio-ui"
 npm run dev
+
+

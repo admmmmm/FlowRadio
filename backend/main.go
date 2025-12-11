@@ -116,14 +116,15 @@ func main() {
 	// 5. 启动 Bilibili 爬虫监听器 (新增)
 	go globalState.runBilibiliListener()
 
-	// 6. 启动自动切歌检查器 (新增)
-	go globalState.runAutoMusicChanger()
+	// 6. 启动自动切歌检查器 (新增) - 已禁用
+	// go globalState.runAutoMusicChanger()
 
 	// 7. 启动 HTTP + WebSocket 服务器
 	startHTTPServer(globalState)
 }
 
 // runAutoMusicChanger 定期检查是否需要自动切歌
+/*
 func (g *GlobalState) runAutoMusicChanger() {
 	ticker := time.NewTicker(10 * time.Second)
 	defer ticker.Stop()
@@ -155,6 +156,7 @@ func (g *GlobalState) runAutoMusicChanger() {
 		}
 	}
 }
+*/
 
 // runBilibiliListener 监听 Bilibili 爬虫的 WebSocket
 func (g *GlobalState) runBilibiliListener() {

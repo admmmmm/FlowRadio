@@ -14,30 +14,10 @@
       width: 100vw; 
       height: 100vh; 
     }
-    /* Panel 开关按钮 */
-    #panel-toggle {
-      position: fixed;
-      right: 10px;
-      bottom: 10px;
-      background: rgba(0, 0, 0, 0.7);
-      color: white;
-      border: 1px solid #00ff88;
-      padding: 8px 15px;
-      border-radius: 5px;
-      cursor: pointer;
-      font-size: 12px;
-      font-family: monospace;
-      z-index: 99999;
-      user-select: none;
-    }
-    #panel-toggle:hover {
-      background: rgba(0, 255, 136, 0.2);
-    }
   </style>
 </head>
 <body>
   <canvas id="canvas"></canvas>
-  <button id="panel-toggle">Panel: OFF</button>
   
   <script src="/Core/live2dcubismcore.js"></script>
   <script type="module">
@@ -139,29 +119,9 @@
           }, '*');
         }
 
-        // Panel按钮功能
-        setupPanelToggle();      } catch (error) {
+      } catch (error) {
         console.error('[Live2D] Initialization failed:', error);
       }
-    }
-
-    // Panel按钮控制
-    function setupPanelToggle() {
-      const toggleBtn = document.getElementById('panel-toggle');
-      
-      toggleBtn.addEventListener('click', () => {
-        const visible = togglePanel();
-        updatePanelButton(visible);
-      });
-
-      const state = getPanelState();
-      updatePanelButton(state.visible);
-    }
-
-    function updatePanelButton(visible) {
-      const toggleBtn = document.getElementById('panel-toggle');
-      toggleBtn.textContent = `Panel: ${visible ? 'ON' : 'OFF'}`;
-      toggleBtn.style.borderColor = visible ? '#ff0088' : '#00ff88';
     }
 
     // 页面加载后初始化

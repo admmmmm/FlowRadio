@@ -213,22 +213,57 @@ func (g *GlobalState) handleUserInputWithCoze(userText string, username string, 
 				var script, tts string
 				
 				// 1. 尝试提取混合格式中的 JSON
-				if idx := strings.Index(content, "\n{"); idx != -1 {
-					jsonPart := content[idx+1:]
-					textPart := content[:idx]
-					
-					var mixedData struct {
-						Link     string  `json:"link"`     // 观察到的字段名
-						Duration float64 `json:"duration"` // 观察到的字段名
-						TTS      string  `json:"tts"`
-						Audio    string  `json:"audio"`
+				// 支持新的标记格式: $以下是...$内容$结束$
+				// 以及旧的混合格式: 文本\n{JSON}
+				
+				// 优先尝试解析带标记的格式
+				// 格式: $以下是Baobab_Fast_Output$文本...$Baobab_Fast_Output结束$\n$以下是Baobab_Fast_Output_audio${JSON}$Baobab_Fast_Output_audio结束$
+				
+				// 提取文本部分
+				textStartMarker := "$以下是Baobab_Fast_Output$"
+				textEndMarker := "$Baobab_Fast_Output结束$"
+				if startIdx := strings.Index(content, textStartMarker); startIdx != -1 {
+					if endIdx := strings.Index(content, textEndMarker); endIdx != -1 && endIdx > startIdx {
+						script = content[startIdx+len(textStartMarker) : endIdx]
 					}
-					if err := json.Unmarshal([]byte(jsonPart), &mixedData); err == nil {
-						script = textPart
-						tts = mixedData.Link
-						if tts == "" { tts = mixedData.TTS }
-						if tts == "" { tts = mixedData.Audio }
-						log.Printf("⚡ [Fast Ack] 成功解析混合格式: Script len=%d, TTS=%s", len(script), tts)
+				}
+				
+				// 提取音频部分
+				audioStartMarker := "$以下是Baobab_Fast_Output_audio$"
+				audioEndMarker := "$Baobab_Fast_Output_audio结束$"
+				if startIdx := strings.Index(content, audioStartMarker); startIdx != -1 {
+					if endIdx := strings.Index(content, audioEndMarker); endIdx != -1 && endIdx > startIdx {
+						jsonStr := content[startIdx+len(audioStartMarker) : endIdx]
+						var audioData struct {
+							Link string `json:"link"`
+							TTS  string `json:"tts"`
+						}
+						if err := json.Unmarshal([]byte(jsonStr), &audioData); err == nil {
+							tts = audioData.Link
+							if tts == "" { tts = audioData.TTS }
+						}
+					}
+				}
+
+				// 如果没有找到标记格式，尝试旧的混合格式
+				if script == "" && tts == "" {
+					if idx := strings.Index(content, "\n{"); idx != -1 {
+						jsonPart := content[idx+1:]
+						textPart := content[:idx]
+						
+						var mixedData struct {
+							Link     string  `json:"link"`     // 观察到的字段名
+							Duration float64 `json:"duration"` // 观察到的字段名
+							TTS      string  `json:"tts"`
+							Audio    string  `json:"audio"`
+						}
+						if err := json.Unmarshal([]byte(jsonPart), &mixedData); err == nil {
+							script = textPart
+							tts = mixedData.Link
+							if tts == "" { tts = mixedData.TTS }
+							if tts == "" { tts = mixedData.Audio }
+							log.Printf("⚡ [Fast Ack] 成功解析混合格式: Script len=%d, TTS=%s", len(script), tts)
+						}
 					}
 				}
 
@@ -257,114 +292,162 @@ func (g *GlobalState) handleUserInputWithCoze(userText string, username string, 
 				} else {
 					log.Printf("⚠️ [Fast Ack] 解析失败或无内容: %s", content)
 				}
-			} else if strings.Contains(title, "Baobab") || strings.Contains(title, "Acacia") || strings.Contains(title, "输出") {
-				// 2. 常规对话节点流式处理
+			} else if strings.Contains(title, "Baobab") || strings.Contains(title, "Acacia") || strings.Contains(title, "输出") || strings.Contains(title, "DJ_output") {
+				// 2. 常规对话节点 & DJ节点 流式处理
 				
 				content := node.Content
 				var script, ttsUrl string
 				
-				// --- 复杂内容解析 (MusicParams + Script + TTS) ---
+				// --- 优先尝试标记解析 (Marker Parsing) ---
+				// 格式: $以下是NodeName$内容$NodeName结束$
 				
-				// 1. 尝试提取开头的 MusicParams JSON
-				if idx := strings.Index(content, "\n"); idx != -1 {
-					potentialJSON := content[:idx]
-					if strings.HasPrefix(strings.TrimSpace(potentialJSON), "{") {
-						var mp MusicParams
-						if err := json.Unmarshal([]byte(potentialJSON), &mp); err == nil {
-							// 验证关键字段
-							if mp.Reasoning != "" || len(mp.WeightedPrompts) > 0 {
-								log.Printf("🎵 [Stream] 检测到 MusicParams, 发送更新...")
-								// 发送音乐参数
+				// A. 处理 DJ_output (音乐参数)
+				if strings.Contains(title, "DJ_output") {
+					markerStart := "$以下是DJ_output$"
+					markerEnd := "$DJ_output结束$"
+					if s := strings.Index(content, markerStart); s != -1 {
+						if e := strings.Index(content, markerEnd); e != -1 && e > s {
+							jsonStr := content[s+len(markerStart) : e]
+							var mp MusicParams
+							if err := json.Unmarshal([]byte(jsonStr), &mp); err == nil {
+								log.Printf("🎵 [Stream] 通过标记提取到 DJ_output MusicParams")
 								musicData := map[string]interface{}{
 									"music_config":      mp.MusicConfig,
 									"weighted_prompts": mp.WeightedPrompts,
 									"reasoning":        mp.Reasoning,
 								}
 								g.WSManager.BroadcastMessage("MUSIC_PARAMS", musicData)
-								// 调用 Lyria
 								g.updateLyriaWithMusicParams(&mp)
-								
-								// 移除 MusicParams 部分，保留剩余内容
-								content = content[idx+1:]
+								// DJ_output 通常只包含配置，不包含语音文本
 							}
 						}
 					}
 				}
 
-				// 2. 尝试提取结尾的 TTS JSON
-				// 查找最后一个换行符 (或者倒数第二个)
-				if lastIdx := strings.LastIndex(content, "\n"); lastIdx != -1 {
-					potentialTTS := content[lastIdx+1:]
-					if strings.HasPrefix(strings.TrimSpace(potentialTTS), "{") {
-						var ttsData struct {
-							Link string `json:"link"`
-							TTS  string `json:"tts"`
-						}
-						if err := json.Unmarshal([]byte(potentialTTS), &ttsData); err == nil {
-							if ttsData.Link != "" || ttsData.TTS != "" {
-								ttsUrl = ttsData.Link
-								if ttsUrl == "" { ttsUrl = ttsData.TTS }
-								// 截断 TTS 部分
-								script = content[:lastIdx]
-							}
-						}
-					}
-				}
-
-				// 如果没有找到 TTS JSON，或者提取后 script 为空(说明只有TTS?)，则处理剩余部分
-				if script == "" {
-					// 如果 content 看起来像纯 JSON 且不是 TTS，可能需要忽略
-					if strings.HasPrefix(strings.TrimSpace(content), "{") {
-						// 1. 尝试解析为 HostOutput (包含 Action)
-						var hostOut struct {
-							Script string `json:"script"`
-							Text   string `json:"text"`
-							Action string `json:"action"`
-							Host1  string `json:"host1"`
-						}
-						if err := json.Unmarshal([]byte(content), &hostOut); err == nil {
-							// 如果有 Action，广播 Action
-							if hostOut.Action != "" {
-								log.Printf("🎬 [Stream] 检测到动作: %s", hostOut.Action)
-								// TODO: 可以在这里广播动作，或者只在汇总时广播
-								// 目前前端可能只在 HOST_MESSAGE 中处理 action
-							}
-							
-							// 提取 Script
-							extractedScript := hostOut.Script
-							if extractedScript == "" { extractedScript = hostOut.Text }
-							if extractedScript == "" { extractedScript = hostOut.Host1 }
-							
-							if extractedScript != "" {
-								script = extractedScript
-							}
-						}
-
-						// 2. 再次检查是否是 MusicParams (如果整个节点只是 MusicParams)
-						// 只有当 script 仍然为空时才检查，避免误判
-						if script == "" {
-							var mp MusicParams
-							if err := json.Unmarshal([]byte(content), &mp); err == nil {
-								if mp.Reasoning != "" {
-									// 已经在上面处理过了? 不，如果节点只有 MusicParams 没有换行
-									log.Printf("🎵 [Stream] 节点仅包含 MusicParams")
-									musicData := map[string]interface{}{
-										"music_config":      mp.MusicConfig,
-										"weighted_prompts": mp.WeightedPrompts,
-										"reasoning":        mp.Reasoning,
-									}
-									g.WSManager.BroadcastMessage("MUSIC_PARAMS", musicData)
-									g.updateLyriaWithMusicParams(&mp)
-									return
-								}
-							}
+				// B. 处理 Baobab_long_comment (文本 + 音频)
+				if strings.Contains(lowerTitle, "baobab_long_comment") {
+					// 1. 尝试提取文本
+					textStart := "$以下是Baobab_long_comment$"
+					textEnd := "$Baobab_long_comment结束$"
+					if s := strings.Index(content, textStart); s != -1 {
+						if e := strings.Index(content, textEnd); e != -1 && e > s {
+							script = content[s+len(textStart) : e]
 						}
 					}
 					
-					if script == "" {
-						script = content
+					// 2. 尝试提取音频
+					audioStart := "$以下是Baobab_long_comment_audio$"
+					audioEnd := "$Baobab_long_comment_audio结束$"
+					if s := strings.Index(content, audioStart); s != -1 {
+						if e := strings.Index(content, audioEnd); e != -1 && e > s {
+							jsonStr := content[s+len(audioStart) : e]
+							var ttsData struct {
+								Link string `json:"link"`
+								TTS  string `json:"tts"`
+							}
+							if err := json.Unmarshal([]byte(jsonStr), &ttsData); err == nil {
+								ttsUrl = ttsData.Link
+								if ttsUrl == "" { ttsUrl = ttsData.TTS }
+							}
+						}
 					}
 				}
+
+				// C. 如果没有通过标记提取到内容，执行旧的启发式逻辑 (Fallback)
+				if script == "" && ttsUrl == "" {
+					// --- 针对 Baobab_long_comment 的特殊处理 (音乐推荐场景) ---
+					if strings.Contains(lowerTitle, "baobab_long_comment") {
+						log.Printf("🎵 [Stream] 检测到音乐评论节点 (Fallback): %s", title)
+						
+						// 格式通常为: JSON(MusicParams) \n Text(Script) \n JSON(TTS)
+						
+						// 1. 提取并移除开头的 MusicParams
+						if idx := strings.Index(content, "\n"); idx != -1 {
+							potentialJSON := content[:idx]
+							if strings.HasPrefix(strings.TrimSpace(potentialJSON), "{") {
+								var mp MusicParams
+								if err := json.Unmarshal([]byte(potentialJSON), &mp); err == nil {
+									if mp.Reasoning != "" || len(mp.WeightedPrompts) > 0 {
+										log.Printf("🎵 [Stream] 提取到 MusicParams")
+										// 发送音乐参数
+										musicData := map[string]interface{}{
+											"music_config":      mp.MusicConfig,
+											"weighted_prompts": mp.WeightedPrompts,
+											"reasoning":        mp.Reasoning,
+										}
+										g.WSManager.BroadcastMessage("MUSIC_PARAMS", musicData)
+										g.updateLyriaWithMusicParams(&mp)
+										
+										// 移除 MusicParams 部分
+										content = content[idx+1:]
+									}
+								}
+							}
+						}
+						
+						// 2. 提取并移除结尾的 TTS JSON
+						if lastOpenBrace := strings.LastIndex(content, "{"); lastOpenBrace != -1 {
+							potentialTTS := content[lastOpenBrace:]
+							var ttsData struct {
+								Link string `json:"link"`
+								TTS  string `json:"tts"`
+							}
+							if err := json.Unmarshal([]byte(potentialTTS), &ttsData); err == nil {
+								if ttsData.Link != "" || ttsData.TTS != "" {
+									ttsUrl = ttsData.Link
+									if ttsUrl == "" { ttsUrl = ttsData.TTS }
+									// 截断 TTS 部分
+									script = content[:lastOpenBrace]
+								}
+							}
+						}
+						
+						// 3. 如果 script 为空，说明没有 TTS JSON 或者提取失败，尝试 Fallback
+						if script == "" {
+							script = content
+						}
+						
+					} else {
+						// --- 常规聊天节点处理 (Acacia聊天输出, Baobab聊天输出) ---
+						// 格式通常为: Text(Script) \n JSON(TTS)
+						
+						// 1. 尝试提取结尾的 TTS JSON
+						if lastOpenBrace := strings.LastIndex(content, "{"); lastOpenBrace != -1 {
+							potentialTTS := content[lastOpenBrace:]
+							var ttsData struct {
+								Link string `json:"link"`
+								TTS  string `json:"tts"`
+							}
+							if err := json.Unmarshal([]byte(potentialTTS), &ttsData); err == nil {
+								if ttsData.Link != "" || ttsData.TTS != "" {
+									ttsUrl = ttsData.Link
+									if ttsUrl == "" { ttsUrl = ttsData.TTS }
+									// 截断 TTS 部分
+									script = content[:lastOpenBrace]
+								}
+							}
+						}
+						
+						// 2. Fallback: 尝试提取纯 URL
+						if ttsUrl == "" {
+							trimmed := strings.TrimSpace(content)
+							lastNewline := strings.LastIndex(trimmed, "\n")
+							if lastNewline != -1 {
+								potentialURL := strings.TrimSpace(trimmed[lastNewline+1:])
+								if (strings.HasPrefix(potentialURL, "http://") || strings.HasPrefix(potentialURL, "https://")) && len(potentialURL) > 10 {
+									ttsUrl = potentialURL
+									script = trimmed[:lastNewline]
+								}
+							}
+						}
+						
+						if script == "" {
+							script = content
+						}
+					}
+				}
+				
+				// --- 通用清理逻辑 ---
 
 				// --- 清理 Script 中的标签 ---
 				// 移除 </think...> 标签
@@ -385,6 +468,19 @@ func (g *GlobalState) handleUserInputWithCoze(userText string, username string, 
 				// 移除 "AcaciaSaid为false." 等调试信息
 				script = strings.ReplaceAll(script, "AcaciaSaid为false.", "")
 				script = strings.ReplaceAll(script, "AcaciaSaid为true.", "")
+				
+				// ⚠️ 关键修正：移除可能残留的 MusicParams JSON
+				// 如果 script 中包含 "music_config"，说明 MusicParams 没有被正确剥离
+				if strings.Contains(script, "\"music_config\"") {
+					// 尝试找到 JSON 的结束位置
+					// 假设 MusicParams 在开头
+					if idx := strings.Index(script, "\n"); idx != -1 {
+						potentialJSON := script[:idx]
+						if strings.Contains(potentialJSON, "\"music_config\"") {
+							script = script[idx+1:]
+						}
+					}
+				}
 				
 				script = strings.TrimSpace(script)
 
@@ -433,12 +529,24 @@ func (g *GlobalState) handleUserInputWithCoze(userText string, username string, 
 					} else {
 						fullScript := prefix + script
 						log.Printf("🌊 [Stream] 发送流式消息: %s... (TTS: %v, Action: %s)", fullScript[:min(20, len(fullScript))], ttsUrl != "", action)
-						g.WSManager.BroadcastMessage("HOST_MESSAGE", map[string]interface{}{
-							"script":  fullScript,
-							"tts_url": ttsUrl,
-							"action":  action, // 新增动作字段
-							"source":  "Coze Stream",
-						})
+						
+						// ⚠️ 关键修正：只有当 ttsUrl 存在时才发送 HOST_MESSAGE
+						// 除非我们确定这是一个纯文本消息（但 Coze 工作流通常都带 TTS）
+						// 如果没有 TTS，这可能是一个中间状态的包（比如只收到了文本，还没收到 TTS JSON）
+						// 观察日志发现，包 #1 只有文本，包 #2 才有文本+TTS。
+						// 如果我们在包 #1 就发送了，前端就会收到一个没声音的消息。
+						// 所以，我们应该等待 TTS。
+						
+						if ttsUrl != "" {
+							g.WSManager.BroadcastMessage("HOST_MESSAGE", map[string]interface{}{
+								"script":  fullScript,
+								"tts_url": ttsUrl,
+								"action":  action, // 新增动作字段
+								"source":  "Coze Stream",
+							})
+						} else {
+							log.Printf("⏳ [Stream] 等待 TTS URL，暂不发送消息...")
+						}
 					}
 					hasStreamedMessages = true
 				}
@@ -491,24 +599,181 @@ func (g *GlobalState) handleUserInputWithCoze(userText string, username string, 
 				"topic": topicContent,
 			})
 		} else {
-			messageData := map[string]interface{}{
-				"script":  result.HostScript,
-				"tts_url": result.HostTTSURL,
-				"action":  result.HostAction, // 传递动作
-				"source":  "Coze Main工作流 (Aggregated)",
+			// --- 增强解析逻辑: 处理聚合消息中的标记 ---
+			// 原始 script 可能包含多个部分: Fast Ack, DJ Output, Long Comment
+			// 格式: $以下是NodeName$内容$NodeName结束$
+			
+			rawScript := result.HostScript
+			var fastText, fastAudio, longText, longAudio string
+			hasMarkers := false
+			
+			// 手动解析标记块，避免正则回溯引用问题
+			// 查找所有 "$以下是" 或 "$一下是" 的起始位置
+			searchContent := rawScript
+			for {
+				startMarkerIdx := -1
+				markerLen := 0
+				
+				// 查找起始标记
+				idx1 := strings.Index(searchContent, "$以下是")
+				idx2 := strings.Index(searchContent, "$一下是")
+				
+				if idx1 != -1 && (idx2 == -1 || idx1 < idx2) {
+					startMarkerIdx = idx1
+					markerLen = len("$以下是")
+				} else if idx2 != -1 {
+					startMarkerIdx = idx2
+					markerLen = len("$一下是")
+				}
+				
+				if startMarkerIdx == -1 {
+					break // 没有更多标记
+				}
+				
+				// 找到起始标记后的第一个 $，确定 NodeName
+				// 格式: $以下是NodeName$
+				nodeNameStart := startMarkerIdx + markerLen
+				nodeNameEnd := strings.Index(searchContent[nodeNameStart:], "$")
+				if nodeNameEnd == -1 {
+					break // 格式错误
+				}
+				nodeNameEnd += nodeNameStart // 转换为绝对索引
+				
+				nodeName := searchContent[nodeNameStart:nodeNameEnd]
+				
+				// 构造结束标记
+				// 结束标记可能是 $NodeName结束$ 或 $以下是NodeName结束$ (根据用户习惯，这里假设是 $NodeName结束$ 或 $以下是NodeName结束$)
+				// 根据之前的正则: \$(?:以下|一下)是\1结束\$ -> $以下是NodeName结束$
+				// 但用户提供的日志显示: $Baobab_Fast_Output结束$
+				// 让我们兼容两种情况
+				
+				endMarker1 := "$" + nodeName + "结束$"
+				endMarker2 := "$以下是" + nodeName + "结束$"
+				endMarker3 := "$一下是" + nodeName + "结束$"
+				
+				contentStart := nodeNameEnd + 1
+				contentEnd := -1
+				matchedEndMarkerLen := 0
+				
+				if idx := strings.Index(searchContent[contentStart:], endMarker1); idx != -1 {
+					contentEnd = contentStart + idx
+					matchedEndMarkerLen = len(endMarker1)
+				} else if idx := strings.Index(searchContent[contentStart:], endMarker2); idx != -1 {
+					contentEnd = contentStart + idx
+					matchedEndMarkerLen = len(endMarker2)
+				} else if idx := strings.Index(searchContent[contentStart:], endMarker3); idx != -1 {
+					contentEnd = contentStart + idx
+					matchedEndMarkerLen = len(endMarker3)
+				}
+				
+				if contentEnd != -1 {
+					hasMarkers = true
+					content := searchContent[contentStart:contentEnd]
+					
+					// 处理提取到的内容
+					if strings.Contains(nodeName, "Fast_Output") {
+						if strings.Contains(nodeName, "audio") {
+							// Fast Audio
+							var audioData struct {
+								Link string `json:"link"`
+								TTS  string `json:"tts"`
+							}
+							if err := json.Unmarshal([]byte(content), &audioData); err == nil {
+								fastAudio = audioData.Link
+								if fastAudio == "" { fastAudio = audioData.TTS }
+							}
+						} else {
+							// Fast Text
+							fastText = content
+						}
+					} else if strings.Contains(nodeName, "DJ_output") {
+						// DJ Music Params
+						var mp MusicParams
+						if err := json.Unmarshal([]byte(content), &mp); err == nil {
+							log.Printf("🎵 [Aggregated] 提取到 MusicParams")
+							musicData := map[string]interface{}{
+								"music_config":      mp.MusicConfig,
+								"weighted_prompts": mp.WeightedPrompts,
+								"reasoning":        mp.Reasoning,
+							}
+							g.WSManager.BroadcastMessage("MUSIC_PARAMS", musicData)
+							g.updateLyriaWithMusicParams(&mp)
+						}
+					} else if strings.Contains(nodeName, "long_comment") {
+						if strings.Contains(nodeName, "audio") {
+							// Long Audio
+							var audioData struct {
+								Link string `json:"link"`
+								TTS  string `json:"tts"`
+							}
+							if err := json.Unmarshal([]byte(content), &audioData); err == nil {
+								longAudio = audioData.Link
+								if longAudio == "" { longAudio = audioData.TTS }
+							}
+						} else {
+							// Long Text
+							longText = content
+						}
+					}
+					
+					// 移动搜索指针
+					searchContent = searchContent[contentEnd+matchedEndMarkerLen:]
+				} else {
+					// 没找到结束标记，跳过这个起始标记
+					searchContent = searchContent[nodeNameEnd+1:]
+				}
 			}
-			// 添加原始主持人输出数据供前端智能解析
-			if result.RawHostOutput != nil {
-				messageData["raw_host"] = result.RawHostOutput
-				log.Printf("📤 [环节2-发送数据] 准备发送HOST_MESSAGE: script='%s', tts_url='%s', action='%s', raw_host=%+v", 
-					messageData["script"].(string)[:min(30, len(messageData["script"].(string)))], 
-					messageData["tts_url"].(string)[:min(50, len(messageData["tts_url"].(string)))], 
-					messageData["action"],
-					messageData["raw_host"])
-			} else {
-				log.Printf("⚠️ [环节2-发送数据] RawHostOutput为nil,只发送script和tts_url")
+			
+			if hasMarkers {
+				// 处理提取到的内容
+				
+				// 1. 发送 Fast Ack (如果存在)
+				if fastText != "" || fastAudio != "" {
+					log.Printf("⚡ [Aggregated] 发送 Fast Ack: %s", fastText)
+					g.WSManager.BroadcastMessage("URGENT_PLAY", map[string]interface{}{
+						"text":    fastText,
+						"audioUrl": fastAudio,
+						"source":  "Coze Aggregated Fast Ack",
+					})
+				}
+				
+				// 2. 更新 result 以便发送 Long Comment (作为主消息)
+				if longText != "" {
+					result.HostScript = longText
+					result.HostTTSURL = longAudio
+				} else if fastText != "" {
+					// 如果只有 Fast Ack 没有 Long Comment，清空 HostScript 避免重复发送 HOST_MESSAGE
+					// 或者如果需要记录，可以保留，但这里我们选择清空以避免前端显示两条消息
+					result.HostScript = "" 
+				} else {
+					// 匹配到了标记但没提取到有效文本 (可能是纯配置)
+					result.HostScript = ""
+				}
 			}
-			g.WSManager.BroadcastMessage("HOST_MESSAGE", messageData)
+
+			// 只有当 script 不为空时才发送 HOST_MESSAGE
+			if result.HostScript != "" {
+				messageData := map[string]interface{}{
+					"script":  result.HostScript,
+					"tts_url": result.HostTTSURL,
+					"action":  result.HostAction, // 传递动作
+					"source":  "Coze Main工作流 (Aggregated)",
+				}
+				// 添加原始主持人输出数据供前端智能解析
+				if result.RawHostOutput != nil {
+					messageData["raw_host"] = result.RawHostOutput
+					log.Printf("📤 [环节2-发送数据] 准备发送HOST_MESSAGE: script='%s', tts_url='%s', action='%s', raw_host=%+v", 
+						messageData["script"].(string)[:min(30, len(messageData["script"].(string)))], 
+						messageData["tts_url"].(string)[:min(50, len(messageData["tts_url"].(string)))], 
+						messageData["action"],
+						messageData["raw_host"])
+				} else {
+					log.Printf("⚠️ [环节2-发送数据] RawHostOutput为nil,只发送script和tts_url")
+				}
+				g.WSManager.BroadcastMessage("HOST_MESSAGE", messageData)
+			} else if hasMarkers {
+				log.Printf("🧹 [Aggregated] 消息已通过标记解析分发，跳过发送空的 HOST_MESSAGE")
+			}
 		}
 	} else {
 		log.Printf("🌊 [Stream] 已通过流式发送消息且无新URL，跳过发送汇总 HOST_MESSAGE")
